@@ -15,3 +15,10 @@ __pycache__/
 *.png
 .DS_Store
 /tmp/
+
+# 런타임 DB (git 제외)
+*.db
+app.db
+
+# 로컬 전용 Claude 설정 (학습 모드 등) — 공개 커밋 제외
+.claude/settings.local.json
