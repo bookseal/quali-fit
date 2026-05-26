@@ -126,10 +126,19 @@ CREATE TABLE IF NOT EXISTS work_code_cert_map (
 );
 """
 
+KNOWN_TABLES = [t for _, t, _ in SEED_PLAN]
+
 def init_db() -> None:
     """Create all tables if they don't exist. Safe to re-run."""
     with connect() as conn:
         conn.executescript(SCHEMA)
+
+def fetch_all(table: str) -> pd.DataFrame:
+    """Return entire table as a DataFrame. Read-only helper for the UI layer."""
+    if table not in KNOWN_TABLES:
+        raise ValueError(f"Unknown table: {table}")
+    with connect() as conn:
+        return pd.read_sql_query(f"SELECT * FROM {table}", conn)
 
 def seed_from_csv() -> None:
     """Reload tables from CSV files in Data/. Idempotent (wipe + reload)."""
