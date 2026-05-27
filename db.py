@@ -208,7 +208,6 @@ def table_meta(table: str) -> dict:
         "auto_id_cols":  sorted(auto_id_cols),
     }
 
-
 def save_diff(table: str, original_df: pd.DataFrame, diff: dict) -> None:
     """Apply data_editor diff (deleted / edited / added) to any
     known table in a single transaction. PK columns are discovered
@@ -286,6 +285,24 @@ def fetch_all(table: str) -> pd.DataFrame:
 
         sql = f"SELECT {', '.join(select_parts)} FROM {table} {' '.join(join_parts)}"
         return pd.read_sql_query(sql, conn)
+
+def fetch_scoring_data(work_code: str) -> pd.DataFrame:
+    """Return long-form (employee × matching cert) rows for the given work_code.
+    Employees with no matching cert do not appear."""
+    sql = """
+        SELECT
+            e.employee_id, e.name, e.dept, e.title,
+            ec.cert_code, cm.cert_name,
+            wccm.influence,
+            ec.expires_at
+        FROM work_code_cert_map wccm
+        JOIN cert_master    cm ON cm.cert_code  = wccm.cert_code
+        JOIN employee_cert  ec ON ec.cert_code  = wccm.cert_code
+        JOIN employee       e  ON e.employee_id = ec.employee_id
+        WHERE wccm.work_code = ?
+    """
+    with connect() as conn:
+        return pd.read_sql_query(sql, conn, params=[work_code])
 
 def seed_from_csv() -> None:
     """Reload tables from CSV files in Data/. Idempotent (wipe + reload)."""
