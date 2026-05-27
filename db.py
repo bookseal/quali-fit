@@ -286,6 +286,26 @@ def fetch_all(table: str) -> pd.DataFrame:
         sql = f"SELECT {', '.join(select_parts)} FROM {table} {' '.join(join_parts)}"
         return pd.read_sql_query(sql, conn)
 
+def fetch_cert_profile(work_code: str) -> pd.DataFrame:
+    """Certs required by a work_code, sorted by influence DESC.
+    Used by the Recommend view to show the work code's shape before
+    ranking employees."""
+    sql = """
+        SELECT
+            wccm.cert_code,
+            cm.cert_name,
+            wccm.influence,
+            cm.l1_category,
+            cm.l2_category
+        FROM work_code_cert_map wccm
+        JOIN cert_master cm ON cm.cert_code = wccm.cert_code
+        WHERE wccm.work_code = ?
+        ORDER BY wccm.influence DESC, wccm.cert_code
+    """
+    with connect() as conn:
+        return pd.read_sql_query(sql, conn, params=[work_code])
+
+
 def fetch_scoring_data(work_code: str) -> pd.DataFrame:
     """Return long-form (employee × matching cert) rows for the given work_code.
     Employees with no matching cert do not appear."""

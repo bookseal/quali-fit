@@ -6,56 +6,168 @@ from datetime import date
 
 st.set_page_config(page_title="quali-fit", layout="wide")
 
-# ---- Top-level mode toggle ----
-MODES = ["Manage data", "Recommend staff"]
-MODE_PARAM = {"Manage data": "manage", "Recommend staff": "recommend"}
-PARAM_MODE = {v: k for k, v in MODE_PARAM.items()}
+# ============================================================
+# UI label translations (identifiers stay English, display 한글)
+# ============================================================
+MODE_LABELS = {
+    "manage":    "데이터 관리",
+    "recommend": "직원 추천",
+}
+
+TABLE_LABELS = {
+    "employee":            "직원 기본정보",
+    "education":           "학력",
+    "employee_cert":       "자격증 보유",
+    "cert_master":         "자격증 마스터",
+    "work_code_master":    "업무코드",
+    "work_code_cert_map":  "업무-자격증 매핑",
+}
+
+CATEGORIES = {
+    "employee_group": ["employee", "education", "employee_cert"],
+    "work_group":     ["work_code_master", "work_code_cert_map"],
+    "cert_group":     ["cert_master"],
+}
+CATEGORY_LABELS = {
+    "employee_group": "직원",
+    "work_group":     "업무",
+    "cert_group":     "자격증",
+}
+
+COLUMN_LABELS = {
+    # employee
+    "employee_id":         "직원번호",
+    "name":                "이름",
+    "dept":                "부서",
+    "title":               "직책",
+    # cert_master
+    "cert_code":           "자격증코드",
+    "cert_name":           "자격증명",
+    "l1_category":         "대분류",
+    "l2_category":         "중분류",
+    "costing_use":         "원가산정활용",
+    "description":         "자격증내용",
+    "performable_work":    "수행가능업무",
+    "influence":           "영향력",
+    "license_type":        "자격유형",
+    "evidence_type":       "증빙유형",
+    "license_grade":       "자격등급",
+    "keywords":            "키워드",
+    "ministry":            "관련부처",
+    "issuer":              "발급기관",
+    # work_code_master
+    "work_code":           "업무분류코드",
+    "l1":                  "대분류",
+    "l2":                  "중분류",
+    "l3":                  "소분류",
+    "task_type":           "업무구분",
+    "classification_basis":"분류기준",
+    "applied_keywords":    "적용키워드",
+    "classification_note": "분류근거",
+    "guidelines":          "관련지침",
+    "related_laws":        "관련법령",
+    "owner":               "책임자",
+    # education
+    "education_id":        "학력번호",
+    "level":               "학력수준",
+    "degree":              "학위",
+    "school":              "학교명",
+    "faculty":             "학부",
+    "major":               "전공",
+    "note":                "비고",
+    # employee_cert
+    "acquired_at":         "취득일",
+    "registered_at":       "등록일",
+    "expires_at":          "유효기간",
+    # scoring outputs
+    "score":               "점수",
+    "match_count":         "매칭수",
+    "expired_count":       "만료수",
+    "valid":               "유효",
+    "contribution":        "기여도",
+}
+
+
+def _label(col: str) -> str:
+    return COLUMN_LABELS.get(col, col)
+
+
+# ============================================================
+# Top-level mode toggle
+# ============================================================
+MODES = list(MODE_LABELS.keys())
 
 url_mode = st.query_params.get("mode", "manage")
-default_mode = PARAM_MODE.get(url_mode, "Manage data")
+default_mode = url_mode if url_mode in MODES else "manage"
 
 mode = st.segmented_control(
     "Mode",
     MODES,
     default=default_mode,
+    format_func=lambda m: MODE_LABELS[m],
     label_visibility="collapsed",
 )
-if mode and MODE_PARAM[mode] != st.query_params.get("mode"):
-    st.query_params["mode"] = MODE_PARAM[mode]
+if mode and mode != st.query_params.get("mode"):
+    st.query_params["mode"] = mode
 
-# ======================================================================
-# Manage data mode
-# ======================================================================
-if mode == "Manage data":
-    url_choice = st.query_params.get("svc", db.KNOWN_TABLES[0])
-    if url_choice not in db.KNOWN_TABLES:
-        url_choice = db.KNOWN_TABLES[0]
+# ============================================================
+# 데이터 관리
+# ============================================================
+if mode == "manage":
+    # ---- Category (top tier) ----
+    url_cat = st.query_params.get("cat", "employee_group")
+    if url_cat not in CATEGORIES:
+        url_cat = "employee_group"
+
+    cat = st.segmented_control(
+        "Category",
+        list(CATEGORIES.keys()),
+        default=url_cat,
+        format_func=lambda c: CATEGORY_LABELS[c],
+        label_visibility="collapsed",
+    )
+    if cat and cat != st.query_params.get("cat"):
+        st.query_params["cat"] = cat
+
+    # ---- Service (sub-tab within category) ----
+    services = CATEGORIES[cat] if cat else CATEGORIES[url_cat]
+    url_svc = st.query_params.get("svc", services[0])
+    if url_svc not in services:
+        url_svc = services[0]
 
     choice = st.segmented_control(
         "Service",
-        db.KNOWN_TABLES,
-        default=url_choice,
+        services,
+        default=url_svc,
+        format_func=lambda t: TABLE_LABELS.get(t, t),
         label_visibility="collapsed",
     )
     if choice and choice != st.query_params.get("svc"):
         st.query_params["svc"] = choice
 
     if choice:
-        st.subheader(choice)
+        st.subheader(TABLE_LABELS.get(choice, choice))
         df = db.fetch_all(choice)
         editor_key = f"{choice}_editor"
         meta = db.table_meta(choice)
         fk_opts = db.fk_options(choice)
+
         column_config = {
-            col: st.column_config.SelectboxColumn(col, options=opts, required=True)
+            col: st.column_config.SelectboxColumn(_label(col), options=opts, required=True)
             for col, opts in fk_opts.items()
         }
         real_cols = set(meta["all_cols"])
         for c in df.columns:
             if c not in real_cols:
-                column_config[c] = st.column_config.TextColumn(c, disabled=True)
+                column_config[c] = st.column_config.TextColumn(_label(c), disabled=True)
         for c in meta["auto_id_cols"]:
-            column_config[c] = st.column_config.TextColumn(c, disabled=True, help="auto-generated on save")
+            column_config[c] = st.column_config.TextColumn(
+                _label(c), disabled=True, help="저장 시 자동 생성"
+            )
+        # Friendly headers on remaining columns (non-FK, non-derived, non-auto)
+        for c in df.columns:
+            if c not in column_config and c in real_cols:
+                column_config[c] = st.column_config.Column(_label(c))
 
         st.data_editor(
             df,
@@ -66,7 +178,7 @@ if mode == "Manage data":
             column_config=column_config,
         )
 
-        if st.button("Save"):
+        if st.button("저장"):
             diff = st.session_state[editor_key]
             errors, warnings = validation.validate_diff(meta, df, diff)
             for msg in warnings:
@@ -77,16 +189,16 @@ if mode == "Manage data":
             else:
                 try:
                     db.save_diff(choice, df, diff)
-                    st.toast("Saved.", icon="✅")
+                    st.toast("저장됨.", icon="✅")
                     del st.session_state[editor_key]
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error saving changes: {e}", icon="❌")
+                    st.error(f"저장 오류: {e}", icon="❌")
 
-# ======================================================================
-# Recommend staff mode
-# ======================================================================
-elif mode == "Recommend staff":
+# ============================================================
+# 직원 추천
+# ============================================================
+elif mode == "recommend":
     wc_df = db.fetch_all("work_code_master")[["work_code", "l1", "l2", "l3"]]
     wc_label = {
         r["work_code"]: f"{r['work_code']} — {r['l1']} / {r['l2']} / {r['l3']}"
@@ -99,7 +211,7 @@ elif mode == "Recommend staff":
         url_wc = codes[0]
 
     work_code = st.selectbox(
-        "Work code",
+        "업무코드",
         codes,
         index=codes.index(url_wc),
         format_func=lambda c: wc_label[c],
@@ -107,32 +219,59 @@ elif mode == "Recommend staff":
     if work_code and work_code != st.query_params.get("wc"):
         st.query_params["wc"] = work_code
 
+    # ---- 요구 자격증 ----
+    profile = db.fetch_cert_profile(work_code)
+    if profile.empty:
+        st.info(f"{work_code}에 매핑된 자격증이 없습니다.")
+    else:
+        st.subheader("요구 자격증")
+        st.dataframe(
+            profile,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "cert_code":   st.column_config.Column(_label("cert_code")),
+                "cert_name":   st.column_config.Column(_label("cert_name")),
+                "l1_category": st.column_config.Column(_label("l1_category")),
+                "l2_category": st.column_config.Column(_label("l2_category")),
+                "influence":   st.column_config.ProgressColumn(
+                    _label("influence"), min_value=0, max_value=5, format="%d",
+                ),
+            },
+        )
+
+    # ---- 직원 랭킹 ----
     joined = db.fetch_scoring_data(work_code)
     if joined.empty:
-        st.info(f"No employees match {work_code} yet.")
+        st.info(f"{work_code}에 적합한 직원이 없습니다.")
     else:
         ranking, rationale = scoring.rank(joined, date.today())
+        st.subheader("직원 랭킹")
         st.dataframe(
             ranking,
             width="stretch",
             hide_index=True,
             column_config={
-                "score": st.column_config.ProgressColumn(
-                    "Score", min_value=0, max_value=7, format="%.1f",
+                "employee_id":   st.column_config.Column(_label("employee_id")),
+                "name":          st.column_config.Column(_label("name")),
+                "dept":          st.column_config.Column(_label("dept")),
+                "title":         st.column_config.Column(_label("title")),
+                "score":         st.column_config.ProgressColumn(
+                    _label("score"), min_value=0, max_value=7, format="%.1f",
                 ),
-                "match_count":   st.column_config.NumberColumn("Matches"),
-                "expired_count": st.column_config.NumberColumn("Expired"),
+                "match_count":   st.column_config.NumberColumn(_label("match_count")),
+                "expired_count": st.column_config.NumberColumn(_label("expired_count")),
             },
         )
 
-        # ---- Top 3 rationale ----
-        st.subheader("Top 3 rationale")
+        # ---- 상위 3명 근거 ----
+        st.subheader("상위 3명 근거")
         for rank_idx, (_, row) in enumerate(ranking.head(3).iterrows(), start=1):
             emp_id = row["employee_id"]
             person = rationale[rationale["employee_id"] == emp_id]
             st.markdown(
-                f"**{rank_idx}. {row['name']} "
-                f"({row['dept']} / {row['title']}) — score {row['score']:.1f}**"
+                f"**{rank_idx}위. {row['name']} "
+                f"({row['dept']} / {row['title']}) — 점수 {row['score']:.1f}**"
             )
             best = person["contribution"].max() if not person.empty else 0
 
@@ -145,14 +284,16 @@ elif mode == "Recommend staff":
 
             display_cols = ["cert_code", "cert_name", "influence",
                             "expires_at", "valid", "contribution"]
+            styled = person[display_cols].style.apply(style_row, axis=1)
             st.dataframe(
-                person[display_cols].style.apply(style_row, axis=1),
+                styled,
                 hide_index=True,
                 width="stretch",
+                column_config={c: _label(c) for c in display_cols},
             )
 
-        # ---- Explainer ----
-        with st.expander("How scoring works (점수 산정 방식)"):
+        # ---- 설명 ----
+        with st.expander("점수 산정 방식"):
             st.markdown(
                 "**기여도 (자격증 1개당)**\n"
                 "- `영향력 (1-5) × 유효성 (1 or 0)`\n"
