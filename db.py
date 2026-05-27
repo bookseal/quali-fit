@@ -133,6 +133,33 @@ def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
 
+def save_employee_diff(original_df: pd.DataFrame, diff: dict) -> None:
+    """Apply st.data_editor diff (edited / added / deleted ) in one transaction."""
+    with connect() as conn:
+        # Deletions: row idx -> look up employee_id in the original snapshot
+        for idx in diff.get("deleted_rows", []):
+            emp_id = original_df.iloc[idx]["employee_id"]
+            conn.execute("DELETE FROM employee WHERE employee_id = ?", (emp_id,))
+
+        # Edits: {idx: {col: new_value, ...}}
+        for idx, changes in diff.get("edited_rows", {}).items():
+            emp_id = original_df.iloc[idx]["employee_id"]
+            cols = list(changes.keys())
+            values = list(changes.values())
+            set_clause = ", ".join(f"{c} = ?" for c in cols)
+            conn.execute(
+                f"UPDATE employee SET {set_clause} WHERE employee_id = ?",
+                (*values, emp_id),
+            )
+
+        # Additions: list of {col: value, ...}
+        for row in diff.get("added_rows", []):
+            conn.execute(
+                "INSERT INTO employee (employee_id, name, dept, title) VALUES (?, ?, ?, ?)",
+                (row.get("employee_id", ""), row.get("name", ""),
+                row.get("dept", ""), row.get("title", "")),
+            )
+
 def fetch_all(table: str) -> pd.DataFrame:
     """Return entire table as a DataFrame. Read-only helper for the UI layer."""
     if table not in KNOWN_TABLES:

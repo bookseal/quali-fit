@@ -20,4 +20,23 @@ if choice and choice != st.query_params.get("svc"):
 if choice:
     st.subheader(choice)
     df = db.fetch_all(choice)
-    st.dataframe(df, width="stretch", hide_index=True)
+    if choice == "employee":
+        st.data_editor(
+            df,
+            num_rows = "dynamic",
+            width = "stretch",
+            hide_index = True,
+            key = "employee_editor",
+        )
+        if st.button("Save"):
+            diff = st.session_state["employee_editor"]
+            try:
+                db.save_employee_diff(df, diff)
+                st.toast("Saved. ", icon="✅")
+                del st.session_state["employee_editor"]  # Clear diff after successful save
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error saving changes: {e}", icon="❌")
+
+    else:
+        st.dataframe(df, width = "stretch", hide_index = True)
