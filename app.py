@@ -19,8 +19,8 @@ TABLE_LABELS = {
     "education":           "학력",
     "employee_cert":       "자격증 보유",
     "cert_master":         "자격증 마스터",
-    "work_code_master":    "업무코드",
-    "work_code_cert_map":  "업무-자격증 매핑",
+    "work_code_master":    "업무분류 마스터",
+    "work_code_cert_map":  "업무분류-자격증 매핑",
 }
 
 CATEGORIES = {
@@ -215,7 +215,7 @@ elif mode == "recommend":
         url_wc = codes[0]
 
     work_code = st.selectbox(
-        "업무코드",
+        "업무분류",
         codes,
         index=codes.index(url_wc),
         format_func=lambda c: wc_label[c],
