@@ -31,7 +31,7 @@ CATEGORIES = {
 CATEGORY_LABELS = {
     "employee_group": "직원",
     "work_group":     "업무",
-    "cert_group":     "자격증",
+    "cert_group":     "한국 자격증 목록",
 }
 
 COLUMN_LABELS = {
@@ -93,20 +93,22 @@ def _label(col: str) -> str:
 
 
 # ============================================================
-# Top-level mode toggle
+# Top-level mode (sidebar — primary nav)
 # ============================================================
 MODES = list(MODE_LABELS.keys())
 
 url_mode = st.query_params.get("mode", "manage")
 default_mode = url_mode if url_mode in MODES else "manage"
 
-mode = st.segmented_control(
-    "Mode",
-    MODES,
-    default=default_mode,
-    format_func=lambda m: MODE_LABELS[m],
-    label_visibility="collapsed",
-)
+with st.sidebar:
+    st.markdown("### quali-fit")
+    mode = st.radio(
+        "메뉴",
+        MODES,
+        index=MODES.index(default_mode),
+        format_func=lambda m: MODE_LABELS[m],
+        label_visibility="collapsed",
+    )
 if mode and mode != st.query_params.get("mode"):
     st.query_params["mode"] = mode
 
@@ -114,11 +116,12 @@ if mode and mode != st.query_params.get("mode"):
 # 데이터 관리
 # ============================================================
 if mode == "manage":
-    # ---- Category (top tier) ----
+    # ---- Category (tier 2 — section-level) ----
     url_cat = st.query_params.get("cat", "employee_group")
     if url_cat not in CATEGORIES:
         url_cat = "employee_group"
 
+    st.subheader("카테고리")
     cat = st.segmented_control(
         "Category",
         list(CATEGORIES.keys()),
@@ -129,13 +132,14 @@ if mode == "manage":
     if cat and cat != st.query_params.get("cat"):
         st.query_params["cat"] = cat
 
-    # ---- Service (sub-tab within category) ----
+    # ---- Service (tier 3 — sub-selection) ----
     services = CATEGORIES[cat] if cat else CATEGORIES[url_cat]
     url_svc = st.query_params.get("svc", services[0])
     if url_svc not in services:
         url_svc = services[0]
 
-    choice = st.segmented_control(
+    st.caption("서비스")
+    choice = st.pills(
         "Service",
         services,
         default=url_svc,
