@@ -1,0 +1,31 @@
+# Mirrors the convention used by the cluster's existing *.bit-habit.com ingresses:
+# - `kubernetes.io/ingress.class` annotation (their existing form)
+# - Explicit Traefik websecure entrypoint + TLS routing
+# - Reuses the already-issued wildcard cert (Secret `tls-secret`, replicated into
+#   this namespace by scripts/deploy.sh — cert-manager renews the source in `default`)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quali-fit
+  namespace: quali-fit
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: quali-fit-quali-fit-auth@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - quali-fit.bit-habit.com
+      secretName: tls-secret
+  rules:
+    - host: quali-fit.bit-habit.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: quali-fit
+                port:
+                  number: 80

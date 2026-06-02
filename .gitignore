@@ -25,3 +25,6 @@ app.db
 
 # 로컬 전용 Claude 설정 (학습 모드 등) — 공개 커밋 제외
 .claude/settings.local.json
+
+# 배포 시크릿 (htpasswd 해시 포함) — 절대 커밋 금지
+k8s/secret-*.yaml

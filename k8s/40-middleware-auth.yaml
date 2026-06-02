@@ -1,0 +1,14 @@
+# Traefik basic-auth middleware.
+# k3s with Traefik v2.10+ uses `traefik.io/v1alpha1`.
+# If `kubectl get crd | grep -i traefik` shows only `traefik.containo.us`,
+# change the apiVersion below to `traefik.containo.us/v1alpha1`.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: quali-fit-auth
+  namespace: quali-fit
+spec:
+  basicAuth:
+    secret: quali-fit-basicauth
+    realm: quali-fit
+    removeHeader: true

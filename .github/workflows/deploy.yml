@@ -1,0 +1,46 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load SSH key into agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Trust server host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 158.180.71.122 >> ~/.ssh/known_hosts
+
+      - name: Sync code to server
+        run: |
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='__pycache__' \
+            --exclude='.venv' \
+            --exclude='app.db' \
+            --exclude='*.db-shm' \
+            --exclude='*.db-wal' \
+            --exclude='k8s/secret-*.yaml' \
+            ./ ubuntu@158.180.71.122:~/quali-fit/
+
+      - name: Build image on server and roll out
+        # deploy.sh builds quali-fit:<sha>, imports it into k3s, then pins the
+        # deployment to that tag (which triggers the rollout) and waits for it.
+        run: |
+          ssh ubuntu@158.180.71.122 \
+            "cd ~/quali-fit && IMAGE_TAG='${{ github.sha }}' ./scripts/deploy.sh"
