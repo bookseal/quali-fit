@@ -306,6 +306,163 @@ def fetch_cert_profile(work_code: str) -> pd.DataFrame:
         return pd.read_sql_query(sql, conn, params=[work_code])
 
 
+def fetch_mapping_matrix(cert_l1_cats: list[str]) -> pd.DataFrame:
+    """Wide matrix for a set of cert categories:
+      rows = all work_codes (sorted by work_code),
+      columns = cert_codes whose cert_master.l1_category IN cert_l1_cats
+               AND at least one employee currently holds the cert
+               (sorted by holder_count DESC, then cert_code).
+
+    Info columns (left, read-only): work_code, l1, l2, l3, task_type.
+    Value columns: one per cert_code, cells = influence (1-5) or NA.
+    """
+    if not cert_l1_cats:
+        raise ValueError("cert_l1_cats must contain at least one category")
+    placeholders = ", ".join(["?"] * len(cert_l1_cats))
+    params = tuple(cert_l1_cats)
+
+    with connect() as conn:
+        work_codes = pd.read_sql_query("""
+            SELECT work_code, l1, l2, l3, task_type
+            FROM work_code_master
+            ORDER BY work_code
+        """, conn)
+
+        # INNER JOIN drops certs that no employee holds.
+        certs = pd.read_sql_query(f"""
+            SELECT
+                c.cert_code,
+                c.cert_name,
+                h.holder_count
+            FROM cert_master c
+            INNER JOIN (
+                SELECT cert_code, COUNT(*) AS holder_count
+                FROM employee_cert
+                GROUP BY cert_code
+            ) h ON h.cert_code = c.cert_code
+            WHERE c.l1_category IN ({placeholders})
+            ORDER BY h.holder_count DESC, c.cert_code
+        """, conn, params=params)
+
+        mappings = pd.read_sql_query(f"""
+            SELECT m.work_code, m.cert_code, m.influence
+            FROM work_code_cert_map m
+            JOIN cert_master c ON c.cert_code = m.cert_code
+            WHERE c.l1_category IN ({placeholders})
+        """, conn, params=params)
+
+    cert_list = certs["cert_code"].tolist()
+    cert_name_by_code = dict(zip(certs["cert_code"], certs["cert_name"]))
+
+    if mappings.empty:
+        pivoted = pd.DataFrame({"work_code": pd.Series(dtype=str)})
+    else:
+        pivoted = (
+            mappings.pivot(index="work_code", columns="cert_code", values="influence")
+            .reset_index()
+        )
+
+    for cert in cert_list:
+        if cert not in pivoted.columns:
+            pivoted[cert] = pd.NA
+
+    matrix = work_codes.merge(pivoted, on="work_code", how="left")
+    info_cols = ["work_code", "l1", "l2", "l3", "task_type"]
+    matrix = matrix[info_cols + cert_list]
+
+    # Nullable Int64 for every influence column.
+    for cert in cert_list:
+        matrix[cert] = pd.to_numeric(matrix[cert], errors="coerce").astype("Int64")
+
+    # Sidecar dict for the UI to label columns with cert_name + holder_count.
+    matrix.attrs["cert_meta"] = (
+        certs.set_index("cert_code")[["cert_name", "holder_count"]].to_dict("index")
+    )
+    return matrix
+
+
+_MATRIX_INFO_COLS = {
+    "work_code": ("work_code", "l1", "l2", "l3", "task_type"),
+    "cert_code": ("cert_code", "cert_name", "holder_count"),
+}
+
+
+def save_mapping_matrix_diff(
+    original: pd.DataFrame,
+    edited: pd.DataFrame,
+    *,
+    row_axis: str,
+) -> dict:
+    """Diff two wide matrices cell-by-cell; apply INSERT/UPDATE/DELETE to
+    work_code_cert_map in one transaction.
+
+    `row_axis` is the column used as the row identity:
+      - "work_code": rows = work_codes, columns = cert_codes
+      - "cert_code": rows = certs, columns = work_codes
+    All other recognised info columns are skipped; the rest are value cells.
+
+    Returns {'inserted': N, 'updated': N, 'deleted': N}.
+    """
+    if row_axis not in _MATRIX_INFO_COLS:
+        raise ValueError(f"row_axis must be one of {list(_MATRIX_INFO_COLS)}")
+    info_cols = set(_MATRIX_INFO_COLS[row_axis])
+    value_cols = [c for c in original.columns if c not in info_cols]
+
+    orig = original.set_index(row_axis)
+    edit = edited.set_index(row_axis)
+
+    inserts: list[tuple] = []   # (work_code, cert_code, influence)
+    updates: list[tuple] = []   # (influence, work_code, cert_code)
+    deletes: list[tuple] = []   # (work_code, cert_code)
+
+    def wc_cc(row_key, col_key):
+        # SQL always uses (work_code, cert_code) tuples.
+        return (row_key, col_key) if row_axis == "work_code" else (col_key, row_key)
+
+    for row_key in orig.index:
+        for col_key in value_cols:
+            o = orig.at[row_key, col_key]
+            e = edit.at[row_key, col_key] if row_key in edit.index else o
+            o_na, e_na = pd.isna(o), pd.isna(e)
+            if o_na and e_na:
+                continue
+            if not e_na:
+                ev = int(e)
+                if not (1 <= ev <= 5):
+                    raise ValueError(
+                        f"influence must be 1..5; got {ev} at "
+                        f"({row_axis}={row_key}, {col_key})"
+                    )
+            wc, cc = wc_cc(row_key, col_key)
+            if o_na:
+                inserts.append((wc, cc, ev))
+            elif e_na:
+                deletes.append((wc, cc))
+            elif int(o) != ev:
+                updates.append((ev, wc, cc))
+
+    with connect() as conn:
+        for params in deletes:
+            conn.execute(
+                "DELETE FROM work_code_cert_map WHERE work_code = ? AND cert_code = ?",
+                params,
+            )
+        for params in updates:
+            conn.execute(
+                "UPDATE work_code_cert_map SET influence = ? "
+                "WHERE work_code = ? AND cert_code = ?",
+                params,
+            )
+        for params in inserts:
+            conn.execute(
+                "INSERT INTO work_code_cert_map (work_code, cert_code, influence) "
+                "VALUES (?, ?, ?)",
+                params,
+            )
+
+    return {"inserted": len(inserts), "updated": len(updates), "deleted": len(deletes)}
+
+
 def fetch_scoring_data(work_code: str) -> pd.DataFrame:
     """Return long-form (employee × matching cert) rows for the given work_code.
     Employees with no matching cert do not appear."""
