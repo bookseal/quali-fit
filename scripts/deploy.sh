@@ -12,8 +12,18 @@ cd "$(dirname "$0")/.."
 IMAGE_TAG="${IMAGE_TAG:-dev}"
 IMAGE="quali-fit:${IMAGE_TAG}"
 
+# Build stamp shown in the app's sidebar footer — confirms a deploy actually
+# shipped and which build is live. Version comes from the VERSION file (rsynced
+# in); the commit tag and build time change every deploy.
+APP_VERSION="$(cat VERSION 2>/dev/null || echo dev)"
+BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M UTC')"
+
 # 1) Build the image locally on the server (ARM64).
-sudo docker build -t "$IMAGE" .
+sudo docker build \
+  --build-arg APP_VERSION="$APP_VERSION" \
+  --build-arg GIT_SHA="$IMAGE_TAG" \
+  --build-arg BUILD_TIME="$BUILD_TIME" \
+  -t "$IMAGE" .
 
 # 2) Import into k3s's containerd so the kubelet can find it without a registry,
 #    then drop the docker-side copy. The pod runs from containerd, so keeping the

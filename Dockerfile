@@ -18,6 +18,16 @@ RUN useradd -m -u 10001 app \
  && chown -R app:app /data /app
 USER app
 
+# Build/version stamp — injected at build time (deploy.sh passes these), surfaced
+# in the app's sidebar footer so you can confirm which build is actually live.
+# Kept late in the file so the per-build values don't bust the pip-install cache.
+ARG APP_VERSION=dev
+ARG GIT_SHA=local
+ARG BUILD_TIME=unknown
+ENV APP_VERSION=$APP_VERSION \
+    GIT_SHA=$GIT_SHA \
+    BUILD_TIME=$BUILD_TIME
+
 EXPOSE 8501
 
 # init_db is idempotent (CREATE TABLE IF NOT EXISTS). The real DB is supplied

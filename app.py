@@ -1,15 +1,38 @@
+import os
 import re
 import streamlit as st
 import db
 import validation
 import scoring
 from datetime import date
+from pathlib import Path
 
 
 def _l1_letter(l1: str) -> str:
     """'원가(C)' -> 'C'; falls back to original string if no (X) parens."""
     m = re.search(r"\(([A-Z])\)", l1)
     return m.group(1) if m else l1
+
+
+def _build_info() -> str:
+    """One-line build stamp for the sidebar footer.
+
+    Lets anyone confirm at a glance which build is live (i.e. that a deploy
+    actually shipped). Values are injected as env vars at image build time
+    (see Dockerfile / deploy.sh); locally they fall back to the VERSION file.
+    """
+    version = (os.environ.get("APP_VERSION") or "").strip()
+    if not version:
+        try:
+            version = (Path(__file__).parent / "VERSION").read_text().strip()
+        except OSError:
+            version = "dev"
+    sha = (os.environ.get("GIT_SHA") or "local").strip()[:12]
+    built = (os.environ.get("BUILD_TIME") or "").strip()
+    parts = [f"v{version}", f"`{sha}`"]
+    if built:
+        parts.append(built)
+    return " · ".join(parts)
 
 st.set_page_config(page_title="quali-fit", layout="wide")
 
@@ -126,6 +149,8 @@ with st.sidebar:
         format_func=lambda m: MODE_LABELS[m],
         label_visibility="collapsed",
     )
+    st.divider()
+    st.caption(_build_info())
 if mode and mode != st.query_params.get("mode"):
     st.query_params["mode"] = mode
 
