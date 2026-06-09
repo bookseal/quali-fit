@@ -8,12 +8,6 @@ from datetime import date
 from pathlib import Path
 
 
-def _l1_letter(l1: str) -> str:
-    """'원가(C)' -> 'C'; falls back to original string if no (X) parens."""
-    m = re.search(r"\(([A-Z])\)", l1)
-    return m.group(1) if m else l1
-
-
 REPO_URL = "https://github.com/bookseal/quali-fit"
 
 
@@ -79,16 +73,6 @@ CATEGORY_LABELS = {
     "employee_group": "직원",
     "work_group":     "업무분류",
     "cert_group":     "한국 자격증 목록",
-}
-
-# Cert l1_category -> bucket (UI-level grouping for the mapping matrix).
-# Each cert l1_category in cert_master should appear exactly once.
-CERT_BUCKETS: dict[str, list[str]] = {
-    "공통":         ["경영경제", "법률행정", "노무사회", "교육사무문화"],
-    "제조·공사":     ["공학제조", "건설부동산"],
-    "안전·환경·생명": ["안전환경", "농림생명"],
-    "IT·데이터":    ["IT데이터"],
-    "기타":         ["보건복지", "교통운송"],
 }
 
 COLUMN_LABELS = {
@@ -210,101 +194,24 @@ if mode == "manage":
 
     if choice == "work_code_cert_map":
         st.subheader(TABLE_LABELS[choice])
-        # ---- Matrix editor: rows = work_codes, cols = certs in picked bucket ----
-        bucket_names = list(CERT_BUCKETS.keys())
-
-        url_bucket = st.query_params.get("ccat", bucket_names[0])
-        if url_bucket not in CERT_BUCKETS:
-            url_bucket = bucket_names[0]
-
-        st.caption("자격증 분류")
-        bucket = st.pills(
-            "ccat", bucket_names, default=url_bucket, label_visibility="collapsed"
-        )
-        if bucket and bucket != st.query_params.get("ccat"):
-            st.query_params["ccat"] = bucket
-        if not bucket:
-            bucket = url_bucket
-
-        with st.expander("평가 가이드", expanded=True):
-            st.markdown(
-                "각 셀에 **1~5 정수**를 입력합니다 — 해당 자격증이 그 "
-                "업무분류에 미치는 영향력.\n\n"
-                "- **5** — 영향력 가장 큼 (핵심 자격증)\n"
-                "- **3** — 중간\n"
-                "- **1** — 영향력 가장 적음 (보조적이지만 있음)\n"
-                "- **빈 셀** — 평가하지 않았거나 매핑 없음\n"
-                "- **0은 입력할 수 없습니다** — 영향력이 0이면 셀을 "
-                "**비워두십시오** (즉 ‘0 = 무관’과 ‘빈칸 = 미평가’를 "
-                "굳이 구분하지 않고, 매핑이 의미 있을 때만 1~5를 적습니다).\n\n"
-                "**행** = 업무분류코드 (왼쪽 5개 정보 열 고정). "
-                "**열** = 위에서 고른 자격증 분류의 자격증들. "
-                "헤더의 `(N명)`은 현재 직원 중 그 자격증을 보유한 사람 수예요. "
-                "다 매기면 아래 **저장** 버튼."
-            )
-
-        matrix = db.fetch_mapping_matrix(CERT_BUCKETS[bucket])
-        cert_meta = matrix.attrs["cert_meta"]
-
-        # Display matrix: shorten l1 to letter for compactness.
-        display_matrix = matrix.copy()
-        display_matrix["l1"] = display_matrix["l1"].apply(_l1_letter)
-
-        info_cols = ["work_code", "l1", "l2", "l3", "task_type"]
-        column_config = {
-            "work_code": st.column_config.TextColumn(
-                "업무분류코드", disabled=True, pinned=True,
-            ),
-            "l1": st.column_config.TextColumn(
-                "대", disabled=True, pinned=True, width="small",
-            ),
-            "l2": st.column_config.TextColumn(
-                "중분류", disabled=True, pinned=True, width="small",
-            ),
-            "l3": st.column_config.TextColumn(
-                "소분류", disabled=True, pinned=True, width="small",
-            ),
-            "task_type": st.column_config.TextColumn(
-                "산정/검증", disabled=True, pinned=True, width="small",
-            ),
-        }
-        for cert_code in display_matrix.columns[5:]:
-            meta = cert_meta.get(cert_code, {})
-            name = meta.get("cert_name", cert_code)
-            holders = meta.get("holder_count", 0)
-            column_config[cert_code] = st.column_config.NumberColumn(
-                f"{name} ({holders}명)",
-                help=cert_code,
-                min_value=1, max_value=5, step=1,
-            )
-
-        editor_key = f"matrix_ccat_{bucket}"
-        edited = st.data_editor(
-            display_matrix,
-            num_rows="fixed",
-            width="stretch",
-            hide_index=True,
-            key=editor_key,
-            column_config=column_config,
-            disabled=info_cols,
+        # ---- CSV export view: rows = certs (by holder count), cols = work_codes ----
+        st.caption(
+            "자격증(행, 보유자 많은 순) × 업무분류(열) 매핑 — **CSV 내보내기용** 보기입니다. "
+            "셀 값은 영향력(1~5), 빈 칸은 매핑 없음. 이 화면은 편집용이 아닙니다."
         )
 
-        if st.button("이 분류 저장", type="primary"):
-            try:
-                result = db.save_mapping_matrix_diff(
-                    display_matrix, edited, row_axis="work_code",
-                )
-                if sum(result.values()) == 0:
-                    st.toast(f"{bucket}: 변경 없음", icon="ℹ️")
-                else:
-                    st.toast(
-                        f"{bucket} 저장 — 추가 {result['inserted']} / "
-                        f"수정 {result['updated']} / 삭제 {result['deleted']}",
-                        icon="✅",
-                    )
-                st.rerun()
-            except Exception as e:
-                st.error(f"저장 오류: {e}", icon="❌")
+        export_df = db.fetch_mapping_export()
+        n_work = len(export_df.columns) - 3  # minus cert_code/cert_name/holder_count
+
+        st.download_button(
+            "CSV 다운로드",
+            data=export_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="work_code_cert_map_export.csv",
+            mime="text/csv",
+            type="primary",
+        )
+        st.caption(f"자격증 {len(export_df)}행 × 업무분류 {n_work}열")
+        st.dataframe(export_df, hide_index=True, width="stretch")
 
     elif choice:
         st.subheader(TABLE_LABELS.get(choice, choice))
