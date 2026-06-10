@@ -442,6 +442,43 @@ def fetch_mapping_export() -> pd.DataFrame:
     return out.rename(columns=header_by_code)
 
 
+def fetch_mapping_grid():
+    """Structured data for the XLSX export builder (issue #34).
+
+    Returns ``(certs, work_codes, influence)``:
+      certs      = DataFrame[cert_code, cert_name, holder_count], holder DESC
+      work_codes = DataFrame[work_code, l1, l2, l3, task_type], work_code ASC
+      influence  = dict[(cert_code, work_code)] -> int
+
+    Kept separate from the on-screen preview (`fetch_mapping_export`) because the
+    export needs the work-code classification fields intact (to split sheets by
+    중분류 and build the 4-row stacked header), not a pre-joined header.
+    """
+    with connect() as conn:
+        certs = pd.read_sql_query("""
+            SELECT c.cert_code, c.cert_name,
+                   COUNT(ec.employee_id) AS holder_count
+            FROM cert_master c
+            LEFT JOIN employee_cert ec ON ec.cert_code = c.cert_code
+            GROUP BY c.cert_code, c.cert_name
+            ORDER BY holder_count DESC, c.cert_code
+        """, conn)
+        work_codes = pd.read_sql_query("""
+            SELECT work_code, l1, l2, l3, task_type
+            FROM work_code_master
+            ORDER BY work_code
+        """, conn)
+        maps = pd.read_sql_query(
+            "SELECT work_code, cert_code, influence FROM work_code_cert_map", conn
+        )
+
+    influence = {
+        (r.cert_code, r.work_code): int(r.influence)
+        for r in maps.itertuples(index=False)
+    }
+    return certs, work_codes, influence
+
+
 _MATRIX_INFO_COLS = {
     "work_code": ("work_code", "l1", "l2", "l3", "task_type"),
     "cert_code": ("cert_code", "cert_name", "holder_count"),

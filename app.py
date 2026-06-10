@@ -2,6 +2,7 @@ import os
 import re
 import streamlit as st
 import db
+import export
 import validation
 import scoring
 from datetime import date
@@ -194,24 +195,31 @@ if mode == "manage":
 
     if choice == "work_code_cert_map":
         st.subheader(TABLE_LABELS[choice])
-        # ---- CSV export view: rows = certs (by holder count), cols = work_codes ----
+        # ---- XLSX export: A3-landscape workbook, one sheet per 중분류 ----
         st.caption(
-            "자격증(행, 보유자 많은 순) × 업무분류(열) 매핑 — **CSV 내보내기용** 보기입니다. "
+            "자격증(행, 보유자 많은 순) × 업무분류(열) 매핑 — **A3 가로 인쇄용 XLSX** 내보내기. "
+            "**중분류별 시트**로 분할되고, 각 업무열 헤더는 4행(코드/중분류/소분류/산정·검증)입니다. "
             "셀 값은 영향력(1~5), 빈 칸은 매핑 없음. 이 화면은 편집용이 아닙니다."
         )
 
-        export_df = db.fetch_mapping_export()
-        n_work = len(export_df.columns) - 3  # minus cert_code/cert_name/holder_count
+        certs, work_codes, influence = db.fetch_mapping_grid()
+        xlsx_bytes = export.build_mapping_workbook(certs, work_codes, influence)
 
         st.download_button(
-            "CSV 다운로드",
-            data=export_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="work_code_cert_map_export.csv",
-            mime="text/csv",
+            "XLSX 다운로드",
+            data=xlsx_bytes,
+            file_name="work_code_cert_map.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
         )
-        st.caption(f"자격증 {len(export_df)}행 × 업무분류 {n_work}열")
-        st.dataframe(export_df, hide_index=True, width="stretch")
+
+        # On-screen preview: flat single-table view (the file itself is split by 중분류).
+        preview = db.fetch_mapping_export()
+        st.caption(
+            f"미리보기 — 자격증 {len(preview)}행 × 업무분류 {len(preview.columns) - 3}열 "
+            "(실제 파일은 중분류별 시트로 분할됩니다)"
+        )
+        st.dataframe(preview, hide_index=True, width="stretch")
 
     elif choice:
         st.subheader(TABLE_LABELS.get(choice, choice))
