@@ -381,6 +381,67 @@ def fetch_mapping_matrix(cert_l1_cats: list[str]) -> pd.DataFrame:
     return matrix
 
 
+def fetch_mapping_export() -> pd.DataFrame:
+    """Wide matrix for CSV export (issue #30).
+
+      rows    = all certs, sorted by holder_count DESC then cert_code
+      columns = all work_codes; header = "work_code · l2 · l3 · task_type"
+      cells   = influence (1-5) as nullable Int64, NA where no mapping
+
+    Left info columns: cert_code, cert_name, holder_count. Read-only /
+    export-oriented — this matrix is not edited in the app.
+    """
+    with connect() as conn:
+        # All certs with holder counts (LEFT JOIN keeps 0-holder certs).
+        certs = pd.read_sql_query("""
+            SELECT c.cert_code, c.cert_name,
+                   COUNT(ec.employee_id) AS holder_count
+            FROM cert_master c
+            LEFT JOIN employee_cert ec ON ec.cert_code = c.cert_code
+            GROUP BY c.cert_code, c.cert_name
+            ORDER BY holder_count DESC, c.cert_code
+        """, conn)
+
+        work_codes = pd.read_sql_query("""
+            SELECT work_code, l2, l3, task_type
+            FROM work_code_master
+            ORDER BY work_code
+        """, conn)
+
+        mappings = pd.read_sql_query(
+            "SELECT work_code, cert_code, influence FROM work_code_cert_map", conn
+        )
+
+    # One joined header per work_code: code · 중분류 · 소분류 · 산정/검증.
+    def _header(row) -> str:
+        parts = [row["work_code"], row["l2"], row["l3"], row["task_type"]]
+        return " · ".join(str(p) for p in parts if p)
+
+    work_codes = work_codes.copy()
+    work_codes["header"] = work_codes.apply(_header, axis=1)
+    col_order = work_codes["work_code"].tolist()
+    header_by_code = dict(zip(work_codes["work_code"], work_codes["header"]))
+
+    # Pivot to cert (rows) × work_code (cols); influence in the cells.
+    if mappings.empty:
+        pivot = pd.DataFrame(index=pd.Index([], name="cert_code"))
+    else:
+        pivot = mappings.pivot(
+            index="cert_code", columns="work_code", values="influence"
+        )
+    for wc in col_order:
+        if wc not in pivot.columns:
+            pivot[wc] = pd.NA
+    pivot = pivot[col_order]
+
+    # Left-join keeps the cert (holder-count) ordering from `certs`.
+    out = certs.merge(pivot, left_on="cert_code", right_index=True, how="left")
+    for wc in col_order:
+        out[wc] = pd.to_numeric(out[wc], errors="coerce").astype("Int64")
+
+    return out.rename(columns=header_by_code)
+
+
 _MATRIX_INFO_COLS = {
     "work_code": ("work_code", "l1", "l2", "l3", "task_type"),
     "cert_code": ("cert_code", "cert_name", "holder_count"),
