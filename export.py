@@ -14,7 +14,6 @@ frozen and repeated on every printed page, fit to one page wide.
 """
 import io
 import re
-from collections import OrderedDict
 
 import xlsxwriter
 
@@ -25,6 +24,18 @@ _BAD_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
 # (0-based 0-3); data starts at row 5 (0-based 4).
 _FIRST_VAL_COL = 3
 _DATA_ROW0 = 4
+
+# Pack ~13 work codes per sheet so each sheet fills one A3-landscape page.
+WORK_CODES_PER_SHEET = 13
+# Work-code column width ≈ 4 CJK chars (the 소분류 row is usually ~4 chars).
+_WORK_COL_WIDTH = 9
+_CHARS_PER_LINE = 4  # at the width above, for wrap-height estimates
+
+
+def _wrap_height(max_len: int, line: int = 14, pad: int = 3) -> float:
+    """Row height to fit `max_len` wrapped CJK chars at _WORK_COL_WIDTH."""
+    lines = max(1, -(-max_len // _CHARS_PER_LINE))  # ceil division
+    return lines * line + pad
 
 
 def _short_code(work_code: str) -> str:
@@ -69,15 +80,21 @@ def build_mapping_workbook(certs, work_codes, influence) -> bytes:
 
     cert_list = list(certs.itertuples(index=False))  # cert_code, cert_name, holder_count
 
-    # Group work codes by (대분류, 중분류); each group becomes one sheet.
-    groups = OrderedDict()
-    for r in sorted(work_codes.itertuples(index=False),
-                    key=lambda r: (r.l1, r.l2, r.work_code)):
-        groups.setdefault((r.l1, r.l2), []).append(r)
+    # Pack work codes into fixed-size pages (~13 cols) so each sheet fills one
+    # A3 page. Sort by work_code so each page is a contiguous code range; the
+    # code prefix encodes the classification, so same-중분류 codes stay adjacent.
+    wcs_sorted = sorted(
+        work_codes.itertuples(index=False), key=lambda r: r.work_code
+    )
+    pages = [
+        wcs_sorted[i:i + WORK_CODES_PER_SHEET]
+        for i in range(0, len(wcs_sorted), WORK_CODES_PER_SHEET)
+    ]
+    total = len(pages)
 
     used_names = set()
-    for (l1, l2), wcs in groups.items():
-        ws = wb.add_worksheet(_safe_sheet_name(l2, used_names))
+    for idx, wcs in enumerate(pages, start=1):
+        ws = wb.add_worksheet(_safe_sheet_name(f"{idx}쪽", used_names))
 
         # --- print setup (A3 landscape) ---
         ws.set_landscape()
@@ -89,7 +106,8 @@ def build_mapping_workbook(certs, work_codes, influence) -> bytes:
         ws.freeze_panes(_DATA_ROW0, _FIRST_VAL_COL)
 
         # --- top-left title + cert info labels ---
-        ws.merge_range(0, 0, 2, 2, f"{l1} · {l2}", f_title)
+        first, last = _short_code(wcs[0].work_code), _short_code(wcs[-1].work_code)
+        ws.merge_range(0, 0, 2, 2, f"{idx}/{total}쪽  ·  {first} ~ {last}", f_title)
         ws.write(3, 0, "자격증코드", f_lbl)
         ws.write(3, 1, "자격증명", f_lbl)
         ws.write(3, 2, "보유자수", f_lbl)
@@ -101,13 +119,17 @@ def build_mapping_workbook(certs, work_codes, influence) -> bytes:
             ws.write(1, col, wc.l2, f_sub)                       # row2: 중분류
             ws.write(2, col, wc.l3 or "", f_sub)                 # row3: 소분류
             ws.write(3, col, wc.task_type, f_sub)                # row4: 산정/검증
-            ws.set_column(col, col, 6.5)
+            ws.set_column(col, col, _WORK_COL_WIDTH)
 
         ws.set_column(0, 0, 16)
         ws.set_column(1, 1, 26)
         ws.set_column(2, 2, 8)
-        for r in range(4):
-            ws.set_row(r, 16)
+        # Code & task_type fit one line; 중분류/소분류 may wrap — size those rows
+        # to the longest value on this page.
+        ws.set_row(0, 15)
+        ws.set_row(1, _wrap_height(max(len(w.l2 or "") for w in wcs)))
+        ws.set_row(2, _wrap_height(max(len(w.l3 or "") for w in wcs)))
+        ws.set_row(3, 15)
 
         # --- data rows (certs, holder order) ---
         for i, c in enumerate(cert_list):
