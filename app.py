@@ -7,7 +7,6 @@ import streamlit.components.v1 as components
 import db
 import validation
 import scoring
-from print_view import build_mapping_print_html
 from datetime import date, datetime
 from pathlib import Path
 
@@ -623,72 +622,24 @@ if mode == "manage":
 
     if choice == "work_code_cert_map":
         st.subheader(TABLE_LABELS[choice])
-        # Two views over the same mapping data:
-        #   csv   — export-oriented dataframe (all certs x work_codes), main's view
-        #   print — per-bucket A4-paginated print preview, yerin's view
-        view_mode = st.segmented_control(
-            "보기 방식",
-            ["csv", "print"],
-            default="csv",
-            format_func=lambda value: {
-                "csv": "CSV 내보내기",
-                "print": "인쇄 미리보기",
-            }[value],
+        # ---- CSV export view: rows = certs (by holder count), cols = work_codes ----
+        st.caption(
+            "자격증(행, 보유자 많은 순) × 업무분류(열) 매핑 — **CSV 내보내기용** 보기입니다. "
+            "셀 값은 영향력(1~5), 빈 칸은 매핑 없음. 이 화면은 편집용이 아닙니다."
         )
 
-        if view_mode == "print":
-            # ---- Print preview: rows = work_codes, cols = certs in picked bucket ----
-            bucket_names = list(CERT_BUCKETS.keys())
+        export_df = db.fetch_mapping_export()
+        n_work = len(export_df.columns) - 3  # minus cert_code/cert_name/holder_count
 
-            url_bucket = st.query_params.get("ccat", bucket_names[0])
-            if url_bucket not in CERT_BUCKETS:
-                url_bucket = bucket_names[0]
-
-            st.caption("자격증 분류")
-            bucket = st.pills(
-                "ccat", bucket_names, default=url_bucket, label_visibility="collapsed"
-            )
-            if bucket and bucket != st.query_params.get("ccat"):
-                st.query_params["ccat"] = bucket
-            if not bucket:
-                bucket = url_bucket
-
-            matrix = db.fetch_mapping_matrix(CERT_BUCKETS[bucket])
-            cert_meta = matrix.attrs["cert_meta"]
-
-            # Display matrix: shorten l1 to letter for compactness.
-            display_matrix = matrix.copy()
-            display_matrix["l1"] = display_matrix["l1"].apply(_l1_letter)
-
-            st.caption(
-                "A4 가로 기준으로 자격증 8열 × 업무 40행씩 자동 분할됩니다. "
-                "미리보기 안의 ‘인쇄 / PDF 저장’ 버튼을 사용하세요."
-            )
-            print_html = build_mapping_print_html(
-                display_matrix,
-                bucket=bucket,
-                cert_meta=cert_meta,
-            )
-            components.html(print_html, height=900, scrolling=True)
-        else:
-            # ---- CSV export view: rows = certs (by holder count), cols = work_codes ----
-            st.caption(
-                "자격증(행, 보유자 많은 순) × 업무분류(열) 매핑 — **CSV 내보내기용** 보기입니다. "
-                "셀 값은 영향력(1~5), 빈 칸은 매핑 없음. 이 화면은 편집용이 아닙니다."
-            )
-
-            export_df = db.fetch_mapping_export()
-            n_work = len(export_df.columns) - 3  # minus cert_code/cert_name/holder_count
-
-            st.download_button(
-                "CSV 다운로드",
-                data=export_df.to_csv(index=False).encode("utf-8-sig"),
-                file_name="work_code_cert_map_export.csv",
-                mime="text/csv",
-                type="primary",
-            )
-            st.caption(f"자격증 {len(export_df)}행 × 업무분류 {n_work}열")
-            st.dataframe(export_df, hide_index=True, width="stretch")
+        st.download_button(
+            "CSV 다운로드",
+            data=export_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="work_code_cert_map_export.csv",
+            mime="text/csv",
+            type="primary",
+        )
+        st.caption(f"자격증 {len(export_df)}행 × 업무분류 {n_work}열")
+        st.dataframe(export_df, hide_index=True, width="stretch")
 
     elif choice:
         st.subheader(TABLE_LABELS.get(choice, choice))
