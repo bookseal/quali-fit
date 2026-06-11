@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS work_code_master (
 CREATE TABLE IF NOT EXISTS education (
     education_id TEXT PRIMARY KEY,
     employee_id TEXT NOT NULL,
+    keco_major TEXT,
+    keco_minor TEXT,
     level TEXT,
     degree TEXT,
     school TEXT,
@@ -160,6 +162,18 @@ def init_db() -> None:
     """Create all tables if they don't exist. Safe to re-run."""
     with connect() as conn:
         conn.executescript(SCHEMA)
+    _migrate_education_keco_columns()
+
+
+def _migrate_education_keco_columns() -> None:
+    """Add education KECO columns to older databases if they are missing."""
+    with connect() as conn:
+        info = conn.execute("PRAGMA table_info(education)").fetchall()
+        columns = {row["name"] for row in info}
+        if "keco_major" not in columns:
+            conn.execute("ALTER TABLE education ADD COLUMN keco_major TEXT")
+        if "keco_minor" not in columns:
+            conn.execute("ALTER TABLE education ADD COLUMN keco_minor TEXT")
 
 def fk_options(table: str) -> dict[str, list]:
     """For each FK column on this table, return the valid parent-PK values.

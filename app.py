@@ -1,12 +1,21 @@
 import os
 import re
+from html import escape
+import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import db
 import export
 import validation
 import scoring
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+
+
+def _l1_letter(l1: str) -> str:
+    """'원가(C)' -> 'C'; falls back to original string if no (X) parens."""
+    m = re.search(r"\(([A-Z])\)", l1)
+    return m.group(1) if m else l1
 
 
 REPO_URL = "https://github.com/bookseal/quali-fit"
@@ -46,7 +55,276 @@ def _build_info() -> str:
         parts.append(built)
     return " · ".join(parts)
 
+
+_TITLE_ORDER = [
+        "원장", "대표", "사장", "부사장", "부원장", "전무", "상무", "본부장",
+        "실장", "부장", "팀장", "차장", "과장", "대리", "주임", "사원", "위원",
+        "수석", "이사",
+]
+
+
+def _title_rank(title: str) -> int:
+        for idx, token in enumerate(_TITLE_ORDER):
+                if token in str(title):
+                        return idx
+        return len(_TITLE_ORDER)
+
+
+def _render_employee_org_chart(df: pd.DataFrame) -> None:
+        """Render a department-based org chart from the current employee table."""
+        if df.empty or not {"name", "dept", "title"}.issubset(df.columns):
+                st.info("조직도를 만들 직원 데이터가 아직 없습니다.")
+                return
+
+        chart_df = df[["employee_id", "name", "dept", "title"]].copy()
+        chart_df["dept"] = chart_df["dept"].fillna("부서 미지정")
+        chart_df["title"] = chart_df["title"].fillna("직책 미지정")
+        chart_df = chart_df.sort_values(
+                by=["dept", "title", "name"],
+                key=lambda col: col.map(_title_rank) if col.name == "title" else col.astype(str),
+                kind="stable",
+        )
+
+        dept_count = chart_df["dept"].nunique(dropna=False)
+        employee_count = len(chart_df)
+        dept_blocks = []
+
+        for dept, group in chart_df.groupby("dept", sort=False):
+                employees = []
+                for _, row in group.iterrows():
+                        employees.append(
+                                f"""
+                                <div class=\"org-employee\">
+                                    <div class=\"org-employee-name\">{escape(str(row['name']))}</div>
+                                    <div class=\"org-employee-meta\">
+                                        <span>{escape(str(row['title']))}</span>
+                                        <span>{escape(str(row['employee_id']))}</span>
+                                    </div>
+                                </div>
+                                """
+                        )
+
+                dept_blocks.append(
+                        f"""
+                        <section class=\"org-dept\">
+                            <div class=\"org-dept-header\">
+                                <div class=\"org-dept-name\">{escape(str(dept))}</div>
+                                <div class=\"org-dept-count\">{len(group)}명</div>
+                            </div>
+                            <div class=\"org-employee-list\">{''.join(employees)}</div>
+                        </section>
+                        """
+                )
+
+        html = f"""
+        <style>
+            .org-wrap {{
+                font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+                color: #1f2937;
+                padding: 8px 4px 0;
+            }}
+            .org-summary {{
+                background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%);
+                border: 1px solid #dbe7f3;
+                border-radius: 22px;
+                padding: 20px 22px;
+                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            }}
+            .org-kicker {{
+                display: inline-block;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                color: #2563eb;
+                background: rgba(37, 99, 235, 0.1);
+                border-radius: 999px;
+                padding: 5px 10px;
+                margin-bottom: 10px;
+            }}
+            .org-title {{
+                font-size: 28px;
+                font-weight: 800;
+                margin: 0;
+                line-height: 1.2;
+            }}
+            .org-desc {{
+                margin-top: 8px;
+                color: #475569;
+                font-size: 14px;
+            }}
+            .org-stats {{
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin-top: 14px;
+            }}
+            .org-stat {{
+                background: rgba(255, 255, 255, 0.8);
+                border: 1px solid #dbe7f3;
+                color: #0f172a;
+                border-radius: 999px;
+                padding: 6px 12px;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+            .org-rail {{
+                position: relative;
+                margin: 18px 0 8px;
+                padding-left: 18px;
+            }}
+            .org-rail::before {{
+                content: '';
+                position: absolute;
+                left: 6px;
+                top: 0;
+                bottom: 0;
+                width: 2px;
+                background: linear-gradient(to bottom, #93c5fd, #cbd5e1);
+            }}
+            .org-root {{
+                position: relative;
+                background: #0f172a;
+                color: white;
+                border-radius: 18px;
+                padding: 14px 18px;
+                margin-left: 18px;
+                width: fit-content;
+                box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+            }}
+            .org-root::before {{
+                content: '';
+                position: absolute;
+                left: -18px;
+                top: 50%;
+                width: 18px;
+                height: 2px;
+                background: #93c5fd;
+            }}
+            .org-root-title {{
+                font-size: 15px;
+                font-weight: 800;
+            }}
+            .org-root-sub {{
+                margin-top: 3px;
+                font-size: 12px;
+                color: rgba(255, 255, 255, 0.72);
+            }}
+            .org-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+                gap: 16px;
+                margin-top: 18px;
+            }}
+            .org-dept {{
+                position: relative;
+                background: white;
+                border: 1px solid #e5e7eb;
+                border-radius: 20px;
+                padding: 16px;
+                box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+            }}
+            .org-dept::before {{
+                content: '';
+                position: absolute;
+                left: 18px;
+                top: -18px;
+                width: 2px;
+                height: 18px;
+                background: #93c5fd;
+            }}
+            .org-dept-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 12px;
+            }}
+            .org-dept-name {{
+                font-size: 18px;
+                font-weight: 800;
+                color: #0f172a;
+            }}
+            .org-dept-count {{
+                font-size: 12px;
+                font-weight: 700;
+                color: #1d4ed8;
+                background: #eff6ff;
+                border-radius: 999px;
+                padding: 4px 10px;
+                white-space: nowrap;
+            }}
+            .org-employee-list {{
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }}
+            .org-employee {{
+                position: relative;
+                background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+                border: 1px solid #e5e7eb;
+                border-radius: 16px;
+                padding: 12px 14px 12px 16px;
+            }}
+            .org-employee::before {{
+                content: '';
+                position: absolute;
+                left: -16px;
+                top: 50%;
+                width: 16px;
+                height: 2px;
+                background: #cbd5e1;
+            }}
+            .org-employee-name {{
+                font-size: 16px;
+                font-weight: 800;
+                color: #111827;
+            }}
+            .org-employee-meta {{
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-top: 8px;
+            }}
+            .org-employee-meta span {{
+                display: inline-flex;
+                align-items: center;
+                border-radius: 999px;
+                padding: 4px 8px;
+                font-size: 12px;
+                font-weight: 700;
+                color: #334155;
+                background: #e2e8f0;
+            }}
+            .org-empty {{
+                padding: 16px 0 8px;
+                color: #475569;
+                font-size: 14px;
+            }}
+        </style>
+        <div class="org-wrap">
+            <div class="org-summary">
+                <div class="org-kicker">자동 갱신</div>
+                <div class="org-title">직원 기본정보 조직도</div>
+                <div class="org-desc">이 화면은 직원 기본정보 표를 기준으로 부서와 직책을 다시 읽어 그립니다. 저장하거나 DB를 직접 바꾸면 다음 렌더에서 반영됩니다.</div>
+                <div class="org-stats">
+                    <span class="org-stat">부서 {dept_count}개</span>
+                    <span class="org-stat">직원 {employee_count}명</span>
+                    <span class="org-stat">정렬 기준: 부서 → 직책 → 이름</span>
+                </div>
+            </div>
+            <div class="org-rail">
+                <div class="org-root">
+                    <div class="org-root-title">회사 조직</div>
+                    <div class="org-root-sub">직원 기본정보를 기반으로 생성</div>
+                </div>
+            </div>
+            <div class="org-grid">{''.join(dept_blocks)}</div>
+        </div>
+        """
+        components.html(html, height=min(1600, 320 + employee_count * 72), scrolling=True)
+
 st.set_page_config(page_title="quali-fit", layout="wide")
+db.init_db()
 
 # ============================================================
 # UI label translations (identifiers stay English, display 한글)
@@ -74,6 +352,16 @@ CATEGORY_LABELS = {
     "employee_group": "직원",
     "work_group":     "업무분류",
     "cert_group":     "한국 자격증 목록",
+}
+
+# Cert l1_category -> bucket (UI-level grouping for the mapping matrix).
+# Each cert l1_category in cert_master should appear exactly once.
+CERT_BUCKETS: dict[str, list[str]] = {
+    "공통":         ["경영경제", "법률행정", "노무사회", "교육사무문화"],
+    "제조·공사":     ["공학제조", "건설부동산"],
+    "안전·환경·생명": ["안전환경", "농림생명"],
+    "IT·데이터":    ["IT데이터"],
+    "기타":         ["보건복지", "교통운송"],
 }
 
 COLUMN_LABELS = {
@@ -111,6 +399,8 @@ COLUMN_LABELS = {
     "owner":               "책임자",
     # education
     "education_id":        "학력번호",
+    "keco_major":          "고용직업분류 대분류",
+    "keco_minor":          "고용직업분류 중분류",
     "level":               "학력수준",
     "degree":              "학위",
     "school":              "학교명",
@@ -132,6 +422,144 @@ COLUMN_LABELS = {
 
 def _label(col: str) -> str:
     return COLUMN_LABELS.get(col, col)
+
+
+# ============================================================
+# 자격증 보유 — 만료 표시 (주의 패널 + 셀 배경색 + CSV)
+# ============================================================
+CERT_WARN_DAYS = 30  # 만료 임박 기준 (일)
+
+_CERT_STATUS_LABELS = {"expired": "만료", "expiring": "만료 예정"}
+_CERT_STATUS_COLORS = {"expired": "#ffcccc", "expiring": "#fff3b0"}
+
+
+def _parse_cert_date(value: str) -> date | None:
+    """employee_cert 날짜 문자열('YY.MM.DD' 등)을 date로 파싱. 실패 시 None."""
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if not s:
+        return None
+    for fmt in ("%y.%m.%d", "%Y-%m-%d", "%Y.%m.%d", "%y-%m-%d", "%Y/%m/%d", "%y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _cert_expiry_status(expires_at: str, today: date,
+                        warn_days: int = CERT_WARN_DAYS) -> str:
+    """expires_at을 today 기준으로 'expired' / 'expiring' / '' 로 분류.
+
+    - 'expired'  : 유효기간이 오늘 이전(오늘 포함) → 만료
+    - 'expiring' : warn_days(기본 30일) 이내 만료 예정
+    - ''         : 여유 있음 / 날짜 미상
+    """
+    d = _parse_cert_date(expires_at)
+    if d is None:
+        return ""
+    if d <= today:
+        return "expired"
+    if (d - today).days <= warn_days:
+        return "expiring"
+    return ""
+
+
+def render_cert_expiry_section(df: pd.DataFrame, today: date) -> None:
+    """자격증 보유 화면 상단: 만료 주의 패널 + 색상 표시 표 + 상태 포함 CSV.
+
+    편집은 아래쪽 data_editor에서 그대로 하고, 이 영역은 만료 모니터링용
+    읽기 전용 뷰입니다(셀 배경색은 st.data_editor가 지원하지 않으므로 분리).
+    """
+    if df.empty or "expires_at" not in df.columns:
+        return
+    status = df["expires_at"].apply(lambda v: _cert_expiry_status(v, today))
+
+    # ---- 1. 주의 패널 ----
+    expiring = df[status == "expiring"]
+    expired = df[status == "expired"]
+    if expiring.empty and expired.empty:
+        st.success("만료되었거나 만료 예정인 자격증이 없습니다.")
+    else:
+        lines = ["**⚠️ 주의**"]
+        for _, r in expiring.iterrows():
+            lines.append(f"- {r['name']}, {r['cert_name']} 자격증 만료 예정")
+        for _, r in expired.iterrows():
+            lines.append(f"- {r['name']}, {r['cert_name']} 만료")
+        st.warning("\n".join(lines))
+
+    # ---- 2. 색상 표시 표 (읽기 전용) ----
+    view = df.copy()
+    view["status"] = status.map(_CERT_STATUS_LABELS).fillna("")
+
+    def _style_row(row):
+        color = _CERT_STATUS_COLORS.get(status.loc[row.name], "")
+        return [f"background-color: {color}" if color else ""] * len(row)
+
+    styled = view.style.apply(_style_row, axis=1)
+    st.caption(f"🔴 만료 · 🟡 {CERT_WARN_DAYS}일 이내 만료 예정")
+    column_config = {c: _label(c) for c in df.columns}
+    column_config["status"] = st.column_config.TextColumn("상태")
+    st.dataframe(styled, hide_index=True, width="stretch",
+                 column_config=column_config)
+
+    # ---- 3. CSV 다운로드 (상태 컬럼 포함 → 만료 정보 보존) ----
+    csv_headers = {c: _label(c) for c in view.columns}
+    csv_headers["status"] = "상태"
+    csv_df = view.rename(columns=csv_headers)
+    st.download_button(
+        "CSV 다운로드 (만료 상태 포함)",
+        data=csv_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name="employee_cert_status.csv",
+        mime="text/csv",
+    )
+    st.divider()
+    st.caption("아래 표에서 편집 후 **저장**하세요.")
+
+
+def _render_education_summary(df: pd.DataFrame) -> None:
+    """Render education counts by level/degree and KECO major/minor."""
+    required = {"employee_id", "level", "degree", "keco_major", "keco_minor"}
+    if df.empty or not required.issubset(df.columns):
+        st.info("학력 집계를 만들 데이터가 아직 없습니다.")
+        return
+
+    has_keco_values = df[["keco_major", "keco_minor"]].notna().any().any()
+    work = df.copy()
+    work["level"] = work["level"].fillna("학력 미지정")
+    work["degree"] = work["degree"].fillna("학위 미지정")
+    work["keco_major"] = work["keco_major"].fillna("고용직업분류 미지정")
+    work["keco_minor"] = work["keco_minor"].fillna("중분류 미지정")
+
+    total_people = work["employee_id"].nunique()
+    level_degree_summary = (
+        work.groupby(["level", "degree"], dropna=False)["employee_id"]
+        .nunique()
+        .reset_index(name="인원")
+        .sort_values(["인원", "level", "degree"], ascending=[False, True, True], ignore_index=True)
+    )
+
+    keco_summary = (
+        work.groupby(["keco_major", "keco_minor", "level", "degree"], dropna=False)["employee_id"]
+        .nunique()
+        .reset_index(name="인원")
+        .sort_values(["keco_major", "keco_minor", "level", "degree"], ignore_index=True)
+    )
+
+    st.caption(f"전체 인원 {total_people}명 기준으로 학력수준 / 학위 및 고용직업분류를 집계했습니다.")
+    summary_cols = st.columns(3)
+    summary_cols[0].metric("전체 인원", f"{total_people}명")
+    summary_cols[1].metric("학력 조합 수", f"{len(level_degree_summary)}개")
+    summary_cols[2].metric("KECO 조합 수", f"{len(keco_summary)}개")
+
+    st.markdown("#### 학력수준 / 학위별 인원")
+    st.dataframe(level_degree_summary, hide_index=True, width="stretch")
+
+    st.markdown("#### 고용직업분류 대분류 / 중분류별 학력 인원")
+    if not has_keco_values:
+        st.info("고용직업분류 대분류와 중분류 값이 아직 없어, 아래 표는 '미지정' 기준으로 집계됩니다.")
+    st.dataframe(keco_summary, hide_index=True, width="stretch")
 
 
 # ============================================================
@@ -225,6 +653,17 @@ if mode == "manage":
         st.subheader(TABLE_LABELS.get(choice, choice))
         # ---- Generic CRUD (all other tables) ----
         df = db.fetch_all(choice)
+
+        # 자격증 보유: 만료 주의 패널 + 색상 표시 + 상태 포함 CSV (편집은 아래 표).
+        if choice == "employee_cert":
+            render_cert_expiry_section(df, date.today())
+
+        if choice == "education":
+            st.divider()
+            st.subheader("학력 집계")
+            st.caption("학력수준, 학위, 고용직업분류 대분류/중분류 기준으로 인원 수를 요약합니다.")
+            _render_education_summary(df)
+
         editor_key = f"{choice}_editor"
         meta = db.table_meta(choice)
         fk_opts = db.fk_options(choice)
@@ -270,6 +709,12 @@ if mode == "manage":
                     st.rerun()
                 except Exception as e:
                     st.error(f"저장 오류: {e}", icon="❌")
+
+        if choice == "employee":
+            st.divider()
+            st.subheader("조직도")
+            st.caption("직원 기본정보의 이름, 부서, 직책을 기준으로 자동 생성됩니다.")
+            _render_employee_org_chart(df)
 
 # ============================================================
 # 직원 추천
