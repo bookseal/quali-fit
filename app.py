@@ -5,16 +5,11 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import db
+import export
 import validation
 import scoring
 from datetime import date, datetime
 from pathlib import Path
-
-
-def _l1_letter(l1: str) -> str:
-    """'원가(C)' -> 'C'; falls back to original string if no (X) parens."""
-    m = re.search(r"\(([A-Z])\)", l1)
-    return m.group(1) if m else l1
 
 
 REPO_URL = "https://github.com/bookseal/quali-fit"
@@ -353,16 +348,6 @@ CATEGORY_LABELS = {
     "cert_group":     "한국 자격증 목록",
 }
 
-# Cert l1_category -> bucket (UI-level grouping for the mapping matrix).
-# Each cert l1_category in cert_master should appear exactly once.
-CERT_BUCKETS: dict[str, list[str]] = {
-    "공통":         ["경영경제", "법률행정", "노무사회", "교육사무문화"],
-    "제조·공사":     ["공학제조", "건설부동산"],
-    "안전·환경·생명": ["안전환경", "농림생명"],
-    "IT·데이터":    ["IT데이터"],
-    "기타":         ["보건복지", "교통운송"],
-}
-
 COLUMN_LABELS = {
     # employee
     "employee_id":         "직원번호",
@@ -622,24 +607,31 @@ if mode == "manage":
 
     if choice == "work_code_cert_map":
         st.subheader(TABLE_LABELS[choice])
-        # ---- CSV export view: rows = certs (by holder count), cols = work_codes ----
+        # ---- XLSX export: A3-landscape workbook, one sheet per 중분류 ----
         st.caption(
-            "자격증(행, 보유자 많은 순) × 업무분류(열) 매핑 — **CSV 내보내기용** 보기입니다. "
+            "자격증(행, 보유자 많은 순) × 업무분류(열) 매핑 — **A3 가로 인쇄용 XLSX** 내보내기. "
+            "**중분류별 시트**로 분할되고, 각 업무열 헤더는 4행(코드/중분류/소분류/산정·검증)입니다. "
             "셀 값은 영향력(1~5), 빈 칸은 매핑 없음. 이 화면은 편집용이 아닙니다."
         )
 
-        export_df = db.fetch_mapping_export()
-        n_work = len(export_df.columns) - 3  # minus cert_code/cert_name/holder_count
+        certs, work_codes, influence = db.fetch_mapping_grid()
+        xlsx_bytes = export.build_mapping_workbook(certs, work_codes, influence)
 
         st.download_button(
-            "CSV 다운로드",
-            data=export_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="work_code_cert_map_export.csv",
-            mime="text/csv",
+            "XLSX 다운로드",
+            data=xlsx_bytes,
+            file_name="work_code_cert_map.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
         )
-        st.caption(f"자격증 {len(export_df)}행 × 업무분류 {n_work}열")
-        st.dataframe(export_df, hide_index=True, width="stretch")
+
+        # On-screen preview: flat single-table view (the file itself is split by 중분류).
+        preview = db.fetch_mapping_export()
+        st.caption(
+            f"미리보기 — 자격증 {len(preview)}행 × 업무분류 {len(preview.columns) - 3}열 "
+            "(실제 파일은 중분류별 시트로 분할됩니다)"
+        )
+        st.dataframe(preview, hide_index=True, width="stretch")
 
     elif choice:
         st.subheader(TABLE_LABELS.get(choice, choice))

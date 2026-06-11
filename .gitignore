@@ -4,6 +4,9 @@ Data/*.xlsx
 Data/backups/
 !Data/.gitkeep
 
+# 생성된 내보내기 파일(매핑 점수 = 회사 기밀) — 커밋 금지
+*.xlsx
+
 # 파이썬/환경
 .venv/
 __pycache__/
