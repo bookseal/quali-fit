@@ -593,6 +593,30 @@ def fetch_scoring_data(work_code: str) -> pd.DataFrame:
     with connect() as conn:
         return pd.read_sql_query(sql, conn, params=[work_code])
 
+def fetch_employee_set_summary() -> pd.DataFrame:
+    """Per-employee 'set' linkage summary for the org chart.
+
+    Realizes the 전문가(직원) → 보유 자격증 → 연관 업무기준 chain:
+      - cert_count:  number of certs the employee holds
+      - cert_names:  comma-joined cert names (for chip display)
+      - work_count:  number of distinct work codes those certs are mapped to
+    Employees with no certs still appear (zero counts) via the LEFT JOINs.
+    """
+    sql = """
+        SELECT
+            e.employee_id,
+            COUNT(DISTINCT ec.cert_code)        AS cert_count,
+            GROUP_CONCAT(DISTINCT cm.cert_name) AS cert_names,
+            COUNT(DISTINCT wccm.work_code)      AS work_count
+        FROM employee e
+        LEFT JOIN employee_cert     ec   ON ec.employee_id = e.employee_id
+        LEFT JOIN cert_master       cm   ON cm.cert_code   = ec.cert_code
+        LEFT JOIN work_code_cert_map wccm ON wccm.cert_code = ec.cert_code
+        GROUP BY e.employee_id
+    """
+    with connect() as conn:
+        return pd.read_sql_query(sql, conn)
+
 def seed_from_csv() -> None:
     """Reload tables from CSV files in Data/. Idempotent (wipe + reload)."""
     with connect() as conn:

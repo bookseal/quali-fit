@@ -50,56 +50,129 @@ def _build_info() -> str:
     return " · ".join(parts)
 
 
+# 직급 서열 (위 = 상위, 아래 = 하위). substring 매칭이라 더 구체적인
+# 토큰(예: 주임연구원)을 더 일반적인 토큰(주임/연구원)보다 먼저 둬야 한다.
 _TITLE_ORDER = [
-        "원장", "대표", "사장", "부사장", "부원장", "전무", "상무", "본부장",
-        "실장", "부장", "팀장", "차장", "과장", "대리", "주임", "사원", "위원",
-        "수석", "이사",
+        "원장", "대표", "사장", "부사장", "부원장", "전무", "상무", "이사",
+        "본부장", "실장", "부장",
+        "수석", "책임연구원", "선임연구원", "전임연구원", "주임연구원", "연구원",
+        "팀장", "차장", "과장", "대리", "주임", "위원", "사원",
 ]
 
 
 def _title_rank(title: str) -> int:
+        # 부분 문자열 매칭이라 '부원장'이 '원장'에, '주임연구원'이 '주임'에
+        # 잘못 걸린다. 후보 중 가장 구체적인(긴) 토큰을 골라 서열을 매긴다.
+        text = str(title)
+        best_idx, best_len = len(_TITLE_ORDER), -1
         for idx, token in enumerate(_TITLE_ORDER):
-                if token in str(title):
-                        return idx
-        return len(_TITLE_ORDER)
+                if token in text and len(token) > best_len:
+                        best_idx, best_len = idx, len(token)
+        return best_idx
+
+
+# 3대 본부(원가/건설/학술) 위주 재편. '회사 소개서' 실제 조직도 확정 시
+# 이 매핑만 수정하면 화면 전체가 따라간다. (#36)
+_HQ_ORDER = ["원장실", "원가본부", "건설본부", "학술본부", "경영지원", "기타"]
+_DEPT_TO_HQ = {
+        "원장":        "원장실",
+        "원가분석":    "원가본부",
+        "건설사업":    "건설본부",
+        "품질관리":    "건설본부",
+        "학술사업":    "학술본부",
+        "학술연구":    "학술본부",
+        "갈등조정중재": "학술본부",
+        "경영기획":    "경영지원",
+        "전략기획":    "경영지원",
+}
+
+
+def _hq_for(dept: str) -> str:
+        return _DEPT_TO_HQ.get(str(dept).strip(), "기타")
+
+
+def _hq_rank(hq: str) -> int:
+        try:
+                return _HQ_ORDER.index(hq)
+        except ValueError:
+                return len(_HQ_ORDER)
 
 
 def _render_employee_org_chart(df: pd.DataFrame) -> None:
-        """Render a department-based org chart from the current employee table."""
+        """Render a 본부 → 부서 → 인원 org chart from the current employee table.
+
+        - 직급순 하향식: 상위 직급이 위, 하위 직급이 아래 (_TITLE_ORDER).
+        - 3대 본부(원가/건설/학술) 위주 그룹핑 (_DEPT_TO_HQ).
+        - 세트 연계: 직원 → 보유 자격증 → 연관 업무기준 (db.fetch_employee_set_summary).
+        - 본부 단위 아코디언(<details>) + 반응형/모바일 미디어쿼리.
+        """
         if df.empty or not {"name", "dept", "title"}.issubset(df.columns):
                 st.info("조직도를 만들 직원 데이터가 아직 없습니다.")
                 return
 
         chart_df = df[["employee_id", "name", "dept", "title"]].copy()
-        chart_df["dept"] = chart_df["dept"].fillna("부서 미지정")
-        chart_df["title"] = chart_df["title"].fillna("직책 미지정")
+        chart_df["dept"] = chart_df["dept"].replace({"-": None}).fillna("부서 미지정")
+        chart_df["title"] = chart_df["title"].replace({"-": None}).fillna("직책 미지정")
+        chart_df["hq"] = chart_df["dept"].map(_hq_for)
+        chart_df["rank"] = chart_df["title"].map(_title_rank)
+
+        # 세트 연계 요약 (직원 → 자격증 → 업무기준). 조회 실패해도 조직도는 그린다.
+        try:
+                set_df = db.fetch_employee_set_summary().set_index("employee_id")
+                set_map = set_df.to_dict("index")
+        except Exception:
+                set_map = {}
+
+        # 본부 → (가장 높은 직급 우선) 정렬, 본부 내 부서 → 직급 → 이름.
         chart_df = chart_df.sort_values(
-                by=["dept", "title", "name"],
-                key=lambda col: col.map(_title_rank) if col.name == "title" else col.astype(str),
+                by=["hq", "dept", "rank", "name"],
+                key=lambda col: col.map(_hq_rank) if col.name == "hq" else (
+                        col if col.name == "rank" else col.astype(str)
+                ),
                 kind="stable",
         )
 
         dept_count = chart_df["dept"].nunique(dropna=False)
+        hq_count = chart_df["hq"].nunique(dropna=False)
         employee_count = len(chart_df)
-        dept_blocks = []
+        certified = sum(1 for v in set_map.values() if (v.get("cert_count") or 0) > 0)
 
-        for dept, group in chart_df.groupby("dept", sort=False):
-                employees = []
-                for _, row in group.iterrows():
-                        employees.append(
-                                f"""
+        def _employee_card(row) -> str:
+                info = set_map.get(row["employee_id"], {})
+                cert_n = int(info.get("cert_count") or 0)
+                work_n = int(info.get("work_count") or 0)
+                names = info.get("cert_names")
+                names = names if isinstance(names, str) else ""
+                set_chips = []
+                if cert_n:
+                        set_chips.append(f'<span class="org-chip chip-cert">자격증 {cert_n}</span>')
+                if work_n:
+                        set_chips.append(f'<span class="org-chip chip-work">업무기준 {work_n}</span>')
+                if not set_chips:
+                        set_chips.append('<span class="org-chip chip-none">연계 자격증 없음</span>')
+                certline = (
+                        f'<div class="org-employee-certs" title="{escape(names)}">{escape(names)}</div>'
+                        if names else ""
+                )
+                return f"""
                                 <div class=\"org-employee\">
                                     <div class=\"org-employee-name\">{escape(str(row['name']))}</div>
                                     <div class=\"org-employee-meta\">
                                         <span>{escape(str(row['title']))}</span>
                                         <span>{escape(str(row['employee_id']))}</span>
                                     </div>
+                                    <div class=\"org-employee-set\">{''.join(set_chips)}</div>
+                                    {certline}
                                 </div>
                                 """
-                        )
 
-                dept_blocks.append(
-                        f"""
+        hq_blocks = []
+        for hq, hq_group in chart_df.groupby("hq", sort=False):
+                dept_blocks = []
+                for dept, group in hq_group.groupby("dept", sort=False):
+                        employees = [_employee_card(row) for _, row in group.iterrows()]
+                        dept_blocks.append(
+                                f"""
                         <section class=\"org-dept\">
                             <div class=\"org-dept-header\">
                                 <div class=\"org-dept-name\">{escape(str(dept))}</div>
@@ -107,6 +180,18 @@ def _render_employee_org_chart(df: pd.DataFrame) -> None:
                             </div>
                             <div class=\"org-employee-list\">{''.join(employees)}</div>
                         </section>
+                                """
+                        )
+                hq_blocks.append(
+                        f"""
+                <details class=\"org-hq\" open>
+                    <summary class=\"org-hq-summary\">
+                        <span class=\"org-hq-name\">{escape(str(hq))}</span>
+                        <span class=\"org-hq-count\">{len(hq_group)}명 · 부서 {hq_group['dept'].nunique()}개</span>
+                        <span class=\"org-hq-caret\">▾</span>
+                    </summary>
+                    <div class=\"org-grid\">{''.join(dept_blocks)}</div>
+                </details>
                         """
                 )
 
@@ -294,28 +379,134 @@ def _render_employee_org_chart(df: pd.DataFrame) -> None:
                 color: #475569;
                 font-size: 14px;
             }}
+            /* ---- 본부 아코디언 ---- */
+            .org-hq-list {{
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                margin-top: 18px;
+            }}
+            .org-hq {{
+                border: 1px solid #dbe7f3;
+                border-radius: 20px;
+                background: linear-gradient(135deg, #ffffff 0%, #f6faff 100%);
+                box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+                overflow: hidden;
+            }}
+            .org-hq-summary {{
+                list-style: none;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 16px 20px;
+                font-weight: 800;
+                color: #0f172a;
+                background: linear-gradient(135deg, #eef6ff 0%, #e0ecfb 100%);
+                transition: background 0.25s ease;
+                user-select: none;
+            }}
+            .org-hq-summary::-webkit-details-marker {{ display: none; }}
+            .org-hq-summary:hover {{ background: #e0ecfb; }}
+            .org-hq-name {{ font-size: 20px; }}
+            .org-hq-count {{
+                font-size: 12px;
+                font-weight: 700;
+                color: #1d4ed8;
+                background: rgba(255, 255, 255, 0.85);
+                border: 1px solid #cfe0f5;
+                border-radius: 999px;
+                padding: 4px 10px;
+                white-space: nowrap;
+            }}
+            .org-hq-caret {{
+                margin-left: auto;
+                font-size: 16px;
+                color: #2563eb;
+                transition: transform 0.3s ease;
+            }}
+            .org-hq[open] .org-hq-caret {{ transform: rotate(180deg); }}
+            .org-hq[open] .org-grid {{ animation: orgFade 0.35s ease; }}
+            @keyframes orgFade {{
+                from {{ opacity: 0; transform: translateY(-6px); }}
+                to   {{ opacity: 1; transform: translateY(0); }}
+            }}
+            .org-hq .org-grid {{ padding: 16px 20px 20px; margin-top: 0; }}
+            .org-dept {{ transition: transform 0.2s ease, box-shadow 0.2s ease; }}
+            .org-dept:hover {{
+                transform: translateY(-3px);
+                box-shadow: 0 14px 30px rgba(15, 23, 42, 0.10);
+            }}
+            .org-employee {{ transition: transform 0.18s ease, border-color 0.18s ease; }}
+            .org-employee:hover {{ transform: translateX(3px); border-color: #93c5fd; }}
+            /* ---- 세트 연계 칩 (자격증 → 업무기준) ---- */
+            .org-employee-set {{
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+                margin-top: 8px;
+            }}
+            .org-chip {{
+                font-size: 11px;
+                font-weight: 800;
+                border-radius: 999px;
+                padding: 3px 9px;
+            }}
+            .chip-cert {{ color: #065f46; background: #d1fae5; }}
+            .chip-work {{ color: #92400e; background: #fef3c7; }}
+            .chip-none {{ color: #64748b; background: #eef2f7; }}
+            .org-employee-certs {{
+                margin-top: 6px;
+                font-size: 11px;
+                color: #64748b;
+                line-height: 1.4;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+            }}
+            /* ---- 반응형 / 모바일 ---- */
+            @media (max-width: 640px) {{
+                .org-title {{ font-size: 22px; }}
+                .org-summary {{ padding: 16px; border-radius: 16px; }}
+                .org-grid {{ grid-template-columns: 1fr; gap: 12px; }}
+                .org-hq .org-grid {{ padding: 12px; }}
+                .org-hq-summary {{ padding: 14px 16px; gap: 8px; flex-wrap: wrap; }}
+                .org-hq-name {{ font-size: 17px; }}
+                .org-root {{ width: auto; }}
+            }}
+            @media (prefers-reduced-motion: reduce) {{
+                .org-hq[open] .org-grid,
+                .org-dept, .org-employee, .org-hq-caret, .org-hq-summary {{
+                    animation: none;
+                    transition: none;
+                }}
+            }}
         </style>
         <div class="org-wrap">
             <div class="org-summary">
                 <div class="org-kicker">자동 갱신</div>
-                <div class="org-title">직원 기본정보 조직도</div>
-                <div class="org-desc">이 화면은 직원 기본정보 표를 기준으로 부서와 직책을 다시 읽어 그립니다. 저장하거나 DB를 직접 바꾸면 다음 렌더에서 반영됩니다.</div>
+                <div class="org-title">전문가 조직도</div>
+                <div class="org-desc">3대 본부(원가·건설·학술) 기준으로 묶고, 직급순(상위→하위)으로 내려옵니다. 각 인원은 보유 자격증 → 연관 업무기준으로 연계됩니다. 본부 제목을 눌러 펼치고 접을 수 있습니다.</div>
                 <div class="org-stats">
+                    <span class="org-stat">본부 {hq_count}개</span>
                     <span class="org-stat">부서 {dept_count}개</span>
                     <span class="org-stat">직원 {employee_count}명</span>
-                    <span class="org-stat">정렬 기준: 부서 → 직책 → 이름</span>
+                    <span class="org-stat">자격 연계 {certified}명</span>
+                    <span class="org-stat">정렬: 본부 → 직급(↓) → 이름</span>
                 </div>
             </div>
             <div class="org-rail">
                 <div class="org-root">
-                    <div class="org-root-title">회사 조직</div>
-                    <div class="org-root-sub">직원 기본정보를 기반으로 생성</div>
+                    <div class="org-root-title">연구소 (원장 직속)</div>
+                    <div class="org-root-sub">전문가 인력 → 자격증 → 실적 → 업무기준 세트 연계</div>
                 </div>
             </div>
-            <div class="org-grid">{''.join(dept_blocks)}</div>
+            <div class="org-hq-list">{''.join(hq_blocks)}</div>
         </div>
         """
-        components.html(html, height=min(1600, 320 + employee_count * 72), scrolling=True)
+        components.html(html, height=min(2400, 360 + employee_count * 96), scrolling=True)
 
 st.set_page_config(page_title="quali-fit", layout="wide")
 db.init_db()
@@ -502,48 +693,161 @@ def render_cert_expiry_section(df: pd.DataFrame, today: date) -> None:
     st.caption("아래 표에서 편집 후 **저장**하세요.")
 
 
+# 큰 전공 범주 — 위에서부터 우선순위로 키워드 매칭. KECO 코드 대신
+# degree/faculty/major 텍스트를 직관적 학부 단위로 묶는다. (#37)
+# 매핑 표는 '회사 소개서' 기준으로 추후 조정 가능.
+_MAJOR_CATEGORIES = [
+    ("법/행정",   ["법학", "법무", "소송", "행정", "법행정", "공공인재", "정경", "법정"]),
+    ("신학",      ["신학", "기독교"]),
+    ("농학(농대)", ["농학", "원예", "식물", "육종"]),
+    ("경영(상대)", ["경영", "경제", "세무", "회계", "컨설팅", "매니지먼트", "무역", "마케팅", "금융", "경상"]),
+    ("공학(공대)", ["공학", "공과", "전자", "기계", "건축", "화학", "조선", "토목", "산업",
+                  "금속", "시스템", "정보통신", "컴퓨터", "설계", "건설", "제어", "전기"]),
+]
+_MAJOR_FALLBACK = "기타"
+# 화면 노출 순서: 큰 학부 → 고졸 → 기타
+_MAJOR_DISPLAY_ORDER = [
+    "공학(공대)", "경영(상대)", "농학(농대)", "법/행정", "신학", "고졸", _MAJOR_FALLBACK,
+]
+_MAJOR_COLORS = {
+    "공학(공대)": "#2563eb", "경영(상대)": "#0d9488", "농학(농대)": "#65a30d",
+    "법/행정": "#9333ea", "신학": "#db2777", "고졸": "#64748b", _MAJOR_FALLBACK: "#94a3b8",
+}
+
+
+def _major_category(degree, faculty, major, level) -> str:
+    text = " ".join(
+        str(x) for x in (degree, faculty, major)
+        if x is not None and str(x) not in ("", "nan")
+    )
+    if "고졸" in str(level) or "고졸" in text:
+        return "고졸"
+    for label, kws in _MAJOR_CATEGORIES:
+        if any(k in text for k in kws):
+            return label
+    return _MAJOR_FALLBACK
+
+
 def _render_education_summary(df: pd.DataFrame) -> None:
-    """Render education counts by level/degree and KECO major/minor."""
-    required = {"employee_id", "level", "degree", "keco_major", "keco_minor"}
+    """Render headcount by big, intuitive major categories (#37).
+
+    KECO 코드 대신 degree/faculty/major를 큰 학부 범주로 묶어 인원을 집계하고,
+    반응형 미디어쿼리 + 인터랙션(막대 애니메이션/hover) CSS로 표시한다.
+    """
+    required = {"employee_id", "level", "degree"}
     if df.empty or not required.issubset(df.columns):
         st.info("학력 집계를 만들 데이터가 아직 없습니다.")
         return
 
-    has_keco_values = df[["keco_major", "keco_minor"]].notna().any().any()
     work = df.copy()
-    work["level"] = work["level"].fillna("학력 미지정")
-    work["degree"] = work["degree"].fillna("학위 미지정")
-    work["keco_major"] = work["keco_major"].fillna("고용직업분류 미지정")
-    work["keco_minor"] = work["keco_minor"].fillna("중분류 미지정")
+    for col in ("level", "degree", "faculty", "major"):
+        if col not in work.columns:
+            work[col] = ""
+    work["level"] = work["level"].fillna("").replace({"-": ""})
+    work["category"] = work.apply(
+        lambda r: _major_category(r["degree"], r["faculty"], r["major"], r["level"]),
+        axis=1,
+    )
 
     total_people = work["employee_id"].nunique()
-    level_degree_summary = (
-        work.groupby(["level", "degree"], dropna=False)["employee_id"]
-        .nunique()
-        .reset_index(name="인원")
-        .sort_values(["인원", "level", "degree"], ascending=[False, True, True], ignore_index=True)
-    )
+    # 범주별 인원(중복 학력은 distinct 직원으로 카운트 — 복수전공/대학원은 여러 범주에 등장 가능)
+    cat_people = work.groupby("category")["employee_id"].nunique()
+    # 범주 × 학위 분포 (학사/석사/박사/전문학사/고졸)
+    level_norm = work["level"].replace({"": "기타"})
+    cat_level = work.groupby(["category", level_norm.rename("lv")])["employee_id"].nunique()
 
-    keco_summary = (
-        work.groupby(["keco_major", "keco_minor", "level", "degree"], dropna=False)["employee_id"]
-        .nunique()
-        .reset_index(name="인원")
-        .sort_values(["keco_major", "keco_minor", "level", "degree"], ignore_index=True)
-    )
+    max_count = int(cat_people.max()) if len(cat_people) else 0
+    cards = []
+    for cat in _MAJOR_DISPLAY_ORDER:
+        n = int(cat_people.get(cat, 0))
+        if n == 0:
+            continue
+        color = _MAJOR_COLORS.get(cat, "#94a3b8")
+        pct = (n / max_count * 100) if max_count else 0
+        share = (n / total_people * 100) if total_people else 0
+        lv_chips = []
+        for lv, cnt in cat_level.get(cat, pd.Series(dtype=int)).sort_values(ascending=False).items():
+            lv_chips.append(f'<span class="edu-lv">{escape(str(lv))} {int(cnt)}</span>')
+        cards.append(f"""
+            <div class="edu-row" style="--bar:{pct:.1f}%; --c:{color};">
+                <div class="edu-head">
+                    <span class="edu-name">{escape(cat)}</span>
+                    <span class="edu-count">{n}명 <em>· {share:.0f}%</em></span>
+                </div>
+                <div class="edu-track"><div class="edu-bar"></div></div>
+                <div class="edu-lvs">{''.join(lv_chips)}</div>
+            </div>
+        """)
 
-    st.caption(f"전체 인원 {total_people}명 기준으로 학력수준 / 학위 및 고용직업분류를 집계했습니다.")
+    used_cats = int((cat_people > 0).sum())
+    html = f"""
+    <style>
+        .edu-wrap {{
+            font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            color: #1f2937; padding: 6px 2px 2px;
+        }}
+        .edu-grid {{ display: flex; flex-direction: column; gap: 14px; }}
+        .edu-row {{
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 16px;
+            padding: 14px 16px; box-shadow: 0 6px 18px rgba(15,23,42,0.05);
+            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+        }}
+        .edu-row:hover {{
+            transform: translateY(-3px); border-color: var(--c);
+            box-shadow: 0 14px 30px rgba(15,23,42,0.10);
+        }}
+        .edu-head {{ display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }}
+        .edu-name {{ font-size: 17px; font-weight: 800; color: #0f172a; }}
+        .edu-count {{ font-size: 15px; font-weight: 800; color: var(--c); white-space: nowrap; }}
+        .edu-count em {{ font-style: normal; font-weight: 700; color: #64748b; font-size: 12px; }}
+        .edu-track {{
+            margin: 10px 0 10px; height: 12px; border-radius: 999px;
+            background: #eef2f7; overflow: hidden;
+        }}
+        .edu-bar {{
+            height: 100%; width: var(--bar); border-radius: 999px;
+            background: linear-gradient(90deg, var(--c), color-mix(in srgb, var(--c) 55%, white));
+            transform-origin: left center; animation: eduGrow 0.9s cubic-bezier(.2,.8,.2,1) both;
+        }}
+        @keyframes eduGrow {{ from {{ transform: scaleX(0); }} to {{ transform: scaleX(1); }} }}
+        .edu-lvs {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+        .edu-lv {{
+            font-size: 11px; font-weight: 700; color: #334155;
+            background: #f1f5f9; border: 1px solid #e2e8f0;
+            border-radius: 999px; padding: 3px 9px;
+            transition: background .15s ease, color .15s ease;
+        }}
+        .edu-row:hover .edu-lv {{ background: color-mix(in srgb, var(--c) 12%, white); color: var(--c); }}
+        @media (max-width: 640px) {{
+            .edu-name {{ font-size: 15px; }}
+            .edu-count {{ font-size: 13px; }}
+            .edu-row {{ padding: 12px; border-radius: 12px; }}
+            .edu-track {{ height: 10px; }}
+        }}
+        @media (prefers-reduced-motion: reduce) {{
+            .edu-bar {{ animation: none; }}
+            .edu-row {{ transition: none; }}
+        }}
+    </style>
+    <div class="edu-wrap"><div class="edu-grid">{''.join(cards)}</div></div>
+    """
+
+    st.caption("KECO 코드 대신 큰 전공 범주(학부 단위)로 묶어 인원을 집계했습니다. 막대를 마우스로 올리면 강조됩니다.")
     summary_cols = st.columns(3)
     summary_cols[0].metric("전체 인원", f"{total_people}명")
-    summary_cols[1].metric("학력 조합 수", f"{len(level_degree_summary)}개")
-    summary_cols[2].metric("KECO 조합 수", f"{len(keco_summary)}개")
+    summary_cols[1].metric("전공 범주", f"{used_cats}개")
+    top_cat = cat_people.idxmax() if len(cat_people) else "-"
+    summary_cols[2].metric("최다 범주", f"{top_cat}")
 
-    st.markdown("#### 학력수준 / 학위별 인원")
-    st.dataframe(level_degree_summary, hide_index=True, width="stretch")
+    components.html(html, height=min(1200, 140 + used_cats * 120), scrolling=True)
 
-    st.markdown("#### 고용직업분류 대분류 / 중분류별 학력 인원")
-    if not has_keco_values:
-        st.info("고용직업분류 대분류와 중분류 값이 아직 없어, 아래 표는 '미지정' 기준으로 집계됩니다.")
-    st.dataframe(keco_summary, hide_index=True, width="stretch")
+    with st.expander("세부 전공 → 범주 매핑 보기"):
+        detail = (
+            work.groupby(["category", "degree", "faculty", "major"], dropna=False)["employee_id"]
+            .nunique().reset_index(name="인원")
+            .sort_values(["category", "인원"], ascending=[True, False], ignore_index=True)
+        )
+        st.dataframe(detail, hide_index=True, width="stretch")
 
 
 # ============================================================
