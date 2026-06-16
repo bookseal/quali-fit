@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>quali-fit — 개발 진행 & 로드맵</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <h1>quali-fit — 개발 진행 &amp; 로드맵</h1>
+    <p>업무에 맞는 직원을 <strong>이유와 함께 추천</strong>하는 사내 웹 도구. 이 페이지는 비개발자용으로
+       <strong>우리가 일하는 법 · 지금까지 한 일 · 앞으로 할 일</strong>을 한눈에 정리합니다.</p>
+    <p class="updated">기준일: 2026-06-16 · 현재 버전 v0.0.13 · 깊은 기술 문서는
+       <a href="https://github.com/bookseal/quali-fit/blob/main/README.md">README</a>,
+       살아있는 현황은 <a href="https://github.com/bookseal/quali-fit/issues">GitHub 이슈</a>에 있습니다.</p>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+  <!-- 1. 우리가 일하는 법 -->
+  <section class="card">
+    <h2><span class="num">1</span>우리가 일하는 법 (GitHub 협업 흐름)</h2>
+    <p class="lead">새 기능 하나가 이런 5단계를 거쳐 실제 서비스에 올라갑니다. 비개발자도 이 흐름만 알면 진행 상황을 따라올 수 있어요.</p>
+    <div class="flow">
+      <div class="step"><span class="k">① 이슈 (Issue)</span><span class="d">"무엇을 할지" 적는 할 일 카드</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="k">② 브랜치 (Branch)</span><span class="d">본문을 건드리지 않는 작업용 사본</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="k">③ PR (Pull Request)</span><span class="d">"이렇게 바꿨어요" 제안 + 리뷰</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="k">④ 머지 (Merge)</span><span class="d">공식본(main)에 반영</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="k">⑤ 자동 배포</span><span class="d">로봇이 서버에 올림 (~20초)</span></div>
+    </div>
+    <p class="lead" style="margin-top:14px;">규칙: <strong>버전 1개 = 이슈 1개 → 브랜치 → PR → 머지.</strong>
+       그래서 아래 "주차별 진행"의 각 항목에는 연결된 이슈/PR 번호가 붙습니다.</p>
+  </section>
+
+  <!-- 2. 지금 어디까지 -->
+  <section class="card">
+    <h2><span class="num">2</span>지금 어디까지 왔나</h2>
+    <ul class="road">
+      <li><span class="ver">v0.0.13</span><span class="badge done">완료 · 현재</span>
+        <span class="desc"> — 조직도 개편 · 학력 큰 범주 집계 · A3 인쇄용 XLSX 내보내기까지 반영</span></li>
+      <li><span class="ver">v0.0.10</span><span class="badge next">다음 1순위</span>
+        <span class="desc"> — 안전 저장 &amp; 백업(저장 전 자동 백업 · 동시편집 방지) ·
+        <a href="https://github.com/bookseal/quali-fit/issues/13">#13</a></span></li>
+      <li><span class="ver">v0.1.0</span><span class="badge next">진행 중</span>
+        <span class="desc"> — 이 docs 페이지 + 문서 파리티 ·
+        <a href="https://github.com/bookseal/quali-fit/issues/39">#39</a></span></li>
+    </ul>
+  </section>
+
+  <!-- 3. 주차별 진행 로그 (매주 성과보고와 1:1) -->
+  <section class="card">
+    <h2><span class="num">3</span>주차별 진행 로그</h2>
+    <p class="lead">매주 한 일을 연결된 이슈/PR과 함께 쌓습니다. 그대로 주간 성과보고 자료로 씁니다. (최신 주가 맨 위)</p>
+
+    <!-- 초안: PR 기준 자동 정리. 원장님 보고 전 메인테이너가 검토·수정합니다. -->
+    <div class="week current">
+      <h3>조직도·학력 개편 반영 · 문서/구조 정비 시작 <span class="range">2026.06.15 – 06.21</span></h3>
+      <ul>
+        <li><strong>조직도·학력 개편을 본문에 반영</strong> — 직급순 하향식 정렬,
+            3대 본부(원가·건설·학술) 그룹핑, 학력을 큰 전공 범주(공대·상대·농대 등)로 집계
+            <span class="ref">(#38 ← #36, #37)</span></li>
+        <li><strong>협업 방식</strong>: 예린(@feed-mina)이 <code>yerin-work</code> 브랜치에서 개발 →
+            메인테이너(@bookseal)가 운영 데이터(직원 41·학력 72)로 검증 후 리뷰·머지</li>
+        <li>비개발자용 진행/로드맵 문서 페이지 신설(이 문서) <span class="ref">(#39)</span></li>
+        <li>앱 코드 구조 정비 계획 수립 — 단일 파일을 화면별 모듈로 나누는 리팩터(단계별) <span class="ref">(#40, #41)</span></li>
+        <li>로드맵 정리 — 먼 미래 추측성 이슈(#17·#18·#19)를 정리하고 "정적·확실" 방향으로 재정비</li>
+      </ul>
+    </div>
+
+    <div class="week">
+      <h3>배포 자동화 정착 · 내보내기 고도화 <span class="range">2026.06.08 – 06.14</span></h3>
+      <ul>
+        <li>비개발자·입문 개발자용 소개 문서 작성 <span class="ref">(#24)</span></li>
+        <li>앱 푸터에 배포 버전·커밋·한국시간 표시 <span class="ref">(#26, #27)</span></li>
+        <li>업무분류코드 PK에 <code>WORK-</code> 접두사 — 코드 컨벤션 통일 <span class="ref">(#29 · v0.0.11)</span></li>
+        <li>업무분류–자격증 매핑 내보내기: CSV 전치 뷰 → A3 인쇄용 XLSX <span class="ref">(#32 · v0.0.12, #35 · v0.0.13)</span></li>
+        <li>직원 조직도 · 자격증 만료 알림 · 학력 집계 1차 <span class="ref">(#33)</span></li>
+      </ul>
+    </div>
+
+    <div class="week">
+      <h3>매핑 행렬 편집기 · 배포 인프라 구축 <span class="range">2026.06.01 – 06.07</span></h3>
+      <ul>
+        <li>업무–자격증 매핑 행렬(matrix) 편집기 <span class="ref">(#20 · v0.0.9)</span></li>
+        <li>배포 자동화: Docker + Kubernetes + GitHub Actions(커밋별 이미지 태그) <span class="ref">(#21)</span></li>
+        <li>서버 디스크 정리·러너 최신화 등 배포 안정화 <span class="ref">(#22, #23)</span></li>
+      </ul>
+    </div>
+
+    <div class="week">
+      <h3>추천 엔진 핵심 완성 <span class="range">2026.05.25 – 05.31</span></h3>
+      <ul>
+        <li>6개 테이블 공통 CRUD 편집기(FK 드롭다운·자동 ID) <span class="ref">(#7 · v0.0.6)</span></li>
+        <li>설명 가능한 점수 계산 서비스(이유까지 보여주는 추천) <span class="ref">(#9 · v0.0.7)</span></li>
+        <li>2단 내비게이션 · 한글 UI · 추천 화면 자격증 프로필 <span class="ref">(#11 · v0.0.8)</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 4. 앞으로 -->
+  <section class="card">
+    <h2><span class="num">4</span>앞으로 갈 길</h2>
+    <ul class="road">
+      <li><span class="ver">v0.0.10</span><span class="badge next">다음</span>
+        <span class="desc"> — 안전 저장 &amp; 백업: 저장 전 자동 백업, 동시편집 방지, 실패 시 명확한 오류</span></li>
+      <li><span class="ver">v0.1.0</span><span class="badge next">진행 중</span>
+        <span class="desc"> — 비개발자용 문서(이 페이지) + 코드 구조 정리(<a href="https://github.com/bookseal/quali-fit/issues/40">#40</a> 리팩터)</span></li>
+      <li><span class="ver">그 다음</span><span class="badge later">방향 · 검토 중</span>
+        <span class="desc"> — 로그인(인증) → 여러 회사 동시 지원 → 외부 연동.
+        <strong>정적·확실</strong>을 원칙으로 두고, 구체화될 때 이슈로 다시 띄웁니다.</span></li>
+    </ul>
+    <p class="lead" style="margin-top:12px;"><strong>안 할 것도 정해 둠</strong>(과금·자동 회원가입 등).
+       범위를 좁게 유지하는 것도 설계의 일부입니다.</p>
+  </section>
+
+  <!-- 5. 전체 버전 표 -->
+  <section class="card">
+    <h2><span class="num">5</span>전체 버전 히스토리</h2>
+    <table class="vh">
+      <thead><tr><th>버전</th><th>무엇이 추가됐나</th></tr></thead>
+      <tbody>
+        <tr><td class="v">v0.0.1–5</td><td>기반: Streamlit · SQLite 6개 테이블 · 읽기 뷰 · 직원 CRUD · 검증 로직</td></tr>
+        <tr><td class="v">v0.0.6</td><td>6개 테이블 공통 CRUD · FK 드롭다운 · 자동 ID</td></tr>
+        <tr><td class="v">v0.0.7</td><td>설명 가능한 점수 계산 + 추천 모드</td></tr>
+        <tr><td class="v">v0.0.8</td><td>UX 개편: 2단 내비 · 한글 라벨 · 자격증 프로필</td></tr>
+        <tr><td class="v">v0.0.9</td><td>업무–자격증 매핑 행렬 편집기</td></tr>
+        <tr><td class="v">(배포)</td><td>Docker · k8s · GitHub Actions 자동 배포</td></tr>
+        <tr><td class="v">v0.0.11</td><td>업무코드 <code>WORK-</code> 접두사 컨벤션 통일</td></tr>
+        <tr><td class="v">v0.0.12</td><td>매핑 내보내기 CSV 전치 뷰</td></tr>
+        <tr><td class="v">v0.0.13</td><td>A3 인쇄용 XLSX 내보내기 · 조직도 개편 · 학력 큰 범주 집계</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    quali-fit · 사내 도구 · 합성 데이터 버전 ·
+    <a href="https://github.com/bookseal/quali-fit">GitHub 저장소</a>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,125 @@
+/* quali-fit 로드맵/진행 docs — 순수 정적 CSS (빌드 없음).
+   원칙: 정적·확실, 노트북/모니터 폭 기준, 인쇄(A4) 가능, 외부 의존 없음. */
+
+:root {
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --bg: #ffffff;
+  --soft: #f8fafc;
+  --accent: #2563eb;
+  --done: #16a34a;
+  --next: #d97706;
+  --later: #94a3b8;
+  --maxw: 960px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--soft);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  line-height: 1.65;
+}
+
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 20px; }
+
+header.site {
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+header.site .wrap { padding-top: 28px; padding-bottom: 22px; }
+header.site h1 { margin: 0 0 6px; font-size: 26px; }
+header.site p { margin: 0; color: var(--muted); }
+.updated { font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+main .wrap { padding-top: 8px; padding-bottom: 48px; }
+
+section.card {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 22px 24px;
+  margin: 20px 0;
+}
+section.card > h2 {
+  margin: 0 0 14px;
+  font-size: 19px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--line);
+}
+section.card > h2 .num { color: var(--accent); margin-right: 8px; }
+
+p.lead { color: var(--muted); margin-top: 0; }
+
+/* 우리가 일하는 법 — 단계 흐름 (순수 CSS, JS 없음) */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 6px 0 4px;
+}
+.flow .step {
+  flex: 1 1 150px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.flow .step .k { font-weight: 700; display: block; }
+.flow .step .d { font-size: 13px; color: var(--muted); }
+.flow .arrow { align-self: center; color: var(--later); font-weight: 700; }
+
+/* 상태 뱃지 */
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.badge.done { background: #dcfce7; color: var(--done); }
+.badge.next { background: #fef3c7; color: var(--next); }
+.badge.later { background: #f1f5f9; color: var(--later); }
+
+/* 주차별 진행 로그 */
+.week {
+  border-left: 3px solid var(--line);
+  padding: 4px 0 4px 16px;
+  margin: 0 0 4px;
+}
+.week + .week { margin-top: 18px; }
+.week.current { border-left-color: var(--accent); }
+.week h3 { margin: 0 0 2px; font-size: 16px; }
+.week .range { color: var(--muted); font-size: 13px; font-weight: 400; margin-left: 8px; }
+.week ul { margin: 8px 0 0; padding-left: 18px; }
+.week li { margin: 3px 0; }
+.week .ref { color: var(--muted); font-size: 13px; }
+
+/* 로드맵 */
+.road { list-style: none; margin: 0; padding: 0; }
+.road li { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.road li:last-child { border-bottom: none; }
+.road .ver { font-weight: 700; margin-right: 10px; }
+.road .desc { color: var(--muted); }
+
+table.vh { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.vh th, table.vh td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+table.vh th { color: var(--muted); font-weight: 600; }
+table.vh td.v { font-weight: 700; white-space: nowrap; }
+
+a { color: var(--accent); }
+footer.site { color: var(--muted); font-size: 13px; text-align: center; padding: 24px 0 40px; }
+
+/* 인쇄(A4) — 주간 성과보고 출력용 */
+@media print {
+  body { background: #fff; }
+  section.card { border: none; padding: 8px 0; margin: 8px 0; page-break-inside: avoid; }
+  header.site { border-bottom: 1px solid #000; }
+  a { color: #000; text-decoration: none; }
+  .badge { border: 1px solid #999; }
+}

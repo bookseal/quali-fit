@@ -7,6 +7,11 @@ being grown into a multi-tenant SaaS. This repo is the **generalized,
 synthetic-data version** — no real data or real organization names are
 included.
 
+> 📊 **개발 진행 상황 & 로드맵 (비개발자용)** — 한눈에 보는 페이지:
+> **<https://bookseal.github.io/quali-fit/>**
+> *우리가 일하는 법 · 지금까지 한 일(주차별) · 앞으로 할 일.* 원장님/실무자용 링크입니다.
+> (GitHub Pages가 켜지면 위 주소에서 열립니다 — 소스는 [`docs/`](docs/).)
+
 **Status:** active hand-rebuild. Eight phases shipped (v0.0.1 → v0.0.8); the
 recommender and CRUD over all six tables are live in Korean. v0.0.9 (matrix
 editor for the work-cert mapping) is in flight on the `phase9-matrix-editor`
