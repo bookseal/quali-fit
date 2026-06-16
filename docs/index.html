@@ -59,49 +59,140 @@
   <!-- 3. 주차별 진행 로그 (매주 성과보고와 1:1) -->
   <section class="card">
     <h2><span class="num">3</span>주차별 진행 로그</h2>
-    <p class="lead">매주 한 일을 연결된 이슈/PR과 함께 쌓습니다. 그대로 주간 성과보고 자료로 씁니다. (최신 주가 맨 위)</p>
+    <p class="lead">매주 한 일을 <strong>근거(이슈·PR 링크)</strong>와 함께 쌓습니다. 그대로 주간 성과보고 자료로 씁니다. (최신 주가 맨 위)</p>
+    <p class="legend">
+      <span class="refs"><a class="pr" href="https://github.com/bookseal/quali-fit/pulls">PR</a></span> 변경 제안·리뷰 ·
+      <span class="refs"><a class="iss" href="https://github.com/bookseal/quali-fit/issues">이슈</a></span> 할 일 정의 ·
+      <span class="refs"><a class="live" href="https://quali-fit.bit-habit.com">▶ 배포 화면</a></span> 실제 서비스(<a href="https://quali-fit.bit-habit.com">quali-fit.bit-habit.com</a>)
+    </p>
 
-    <!-- 초안: PR 기준 자동 정리. 원장님 보고 전 메인테이너가 검토·수정합니다. -->
+    <!-- 초안: PR/이슈 기준 정리. 원장님 보고 전 메인테이너가 검토·수정합니다. -->
     <div class="week current">
-      <h3>조직도·학력 개편 반영 · 문서/구조 정비 시작 <span class="range">2026.06.15 – 06.21</span></h3>
+      <h3>조직도·학력 개편 반영 · 문서/구조 정비 시작 <span class="range">2026.06.15(월) – 06.21(일)</span></h3>
       <ul>
-        <li><strong>조직도·학력 개편을 본문에 반영</strong> — 직급순 하향식 정렬,
-            3대 본부(원가·건설·학술) 그룹핑, 학력을 큰 전공 범주(공대·상대·농대 등)로 집계
-            <span class="ref">(#38 ← #36, #37)</span></li>
-        <li><strong>협업 방식</strong>: 예린(@feed-mina)이 <code>yerin-work</code> 브랜치에서 개발 →
-            메인테이너(@bookseal)가 운영 데이터(직원 41·학력 72)로 검증 후 리뷰·머지</li>
-        <li>비개발자용 진행/로드맵 문서 페이지 신설(이 문서) <span class="ref">(#39)</span></li>
-        <li>앱 코드 구조 정비 계획 수립 — 단일 파일을 화면별 모듈로 나누는 리팩터(단계별) <span class="ref">(#40, #41)</span></li>
-        <li>로드맵 정리 — 먼 미래 추측성 이슈(#17·#18·#19)를 정리하고 "정적·확실" 방향으로 재정비</li>
+        <li><strong>조직도·학력 개편을 운영 서비스에 반영</strong> — 직급순 하향식 정렬, 3대 본부(원가·건설·학술) 그룹핑, 학력을 큰 전공 범주(공대·상대·농대 등)로 집계
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/38">PR #38</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/36">이슈 #36</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/37">이슈 #37</a>
+            <a class="live" href="https://quali-fit.bit-habit.com/?mode=manage&amp;cat=employee_group&amp;svc=employee">▶ 조직도</a>
+            <a class="live" href="https://quali-fit.bit-habit.com/?mode=manage&amp;cat=employee_group&amp;svc=education">▶ 학력</a>
+          </span>
+        </li>
+        <li><strong>협업 방식</strong>: 예린(<a href="https://github.com/feed-mina">@feed-mina</a>)이 <code>yerin-work</code> 브랜치에서 개발 → 메인테이너(<a href="https://github.com/bookseal">@bookseal</a>)가 운영 데이터(직원 41·학력 72)로 검증 후 리뷰·머지</li>
+        <li>비개발자용 진행/로드맵 페이지 신설·공개 + README 한글 2링크 단순화
+          <span class="refs">
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/39">이슈 #39</a>
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/42">PR #42</a>
+            <a class="live" href="https://bookseal.github.io/quali-fit/">▶ 진행 페이지</a>
+          </span>
+        </li>
+        <li>다음 버전 라벨 정리: v0.0.10 → <strong>v0.1.1</strong>
+          <span class="refs">
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/13">이슈 #13</a>
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/43">PR #43</a>
+          </span>
+        </li>
+        <li>앱 코드 구조 정비 계획 수립 — 단일 파일을 화면별 모듈로 나누는 리팩터(단계별)
+          <span class="refs">
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/40">이슈 #40</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/41">이슈 #41</a>
+          </span>
+        </li>
+        <li>로드맵 정리 — 먼 미래 추측성 이슈를 닫고 "정적·확실" 방향으로 재정비
+          <span class="refs">
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/17">이슈 #17</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/18">이슈 #18</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/19">이슈 #19</a>
+          </span>
+        </li>
       </ul>
     </div>
 
     <div class="week">
-      <h3>배포 자동화 정착 · 내보내기 고도화 <span class="range">2026.06.08 – 06.14</span></h3>
+      <h3>배포 자동화 정착 · 내보내기 고도화 <span class="range">2026.06.08(월) – 06.14(일)</span></h3>
       <ul>
-        <li>비개발자·입문 개발자용 소개 문서 작성 <span class="ref">(#24)</span></li>
-        <li>앱 푸터에 배포 버전·커밋·한국시간 표시 <span class="ref">(#26, #27)</span></li>
-        <li>업무분류코드 PK에 <code>WORK-</code> 접두사 — 코드 컨벤션 통일 <span class="ref">(#29 · v0.0.11)</span></li>
-        <li>업무분류–자격증 매핑 내보내기: CSV 전치 뷰 → A3 인쇄용 XLSX <span class="ref">(#32 · v0.0.12, #35 · v0.0.13)</span></li>
-        <li>직원 조직도 · 자격증 만료 알림 · 학력 집계 1차 <span class="ref">(#33)</span></li>
+        <li>비개발자·입문 개발자용 소개 문서(<code>프로젝트_소개.md</code>) 작성
+          <span class="refs"><a class="pr" href="https://github.com/bookseal/quali-fit/pull/24">PR #24</a></span>
+        </li>
+        <li>앱 푸터에 배포 버전·커밋·한국시간 표시
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/26">PR #26</a>
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/27">PR #27</a>
+            <a class="live" href="https://quali-fit.bit-habit.com">▶ 배포 화면</a>
+          </span>
+        </li>
+        <li>업무분류코드 PK에 <code>WORK-</code> 접두사 — 코드 컨벤션 통일 <span class="ver-tag">v0.0.11</span>
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/29">PR #29</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/28">이슈 #28</a>
+          </span>
+        </li>
+        <li>업무분류–자격증 매핑 내보내기: CSV 전치 뷰 <span class="ver-tag">v0.0.12</span> → A3 인쇄용 XLSX <span class="ver-tag">v0.0.13</span>
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/32">PR #32</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/30">이슈 #30</a>
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/35">PR #35</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/34">이슈 #34</a>
+            <a class="live" href="https://quali-fit.bit-habit.com/?mode=manage&amp;cat=work_group&amp;svc=work_code_cert_map">▶ 매핑 화면</a>
+          </span>
+        </li>
+        <li>직원 조직도 · 자격증 만료 알림 · 학력 집계 1차
+          <span class="refs"><a class="pr" href="https://github.com/bookseal/quali-fit/pull/33">PR #33</a></span>
+        </li>
+        <li>문서만 바뀐 푸시는 배포를 건너뛰도록 CI 정리
+          <span class="refs"><a class="pr" href="https://github.com/bookseal/quali-fit/pull/25">PR #25</a></span>
+        </li>
       </ul>
     </div>
 
     <div class="week">
-      <h3>매핑 행렬 편집기 · 배포 인프라 구축 <span class="range">2026.06.01 – 06.07</span></h3>
+      <h3>매핑 행렬 편집기 · 배포 인프라 구축 <span class="range">2026.06.01(월) – 06.07(일)</span></h3>
       <ul>
-        <li>업무–자격증 매핑 행렬(matrix) 편집기 <span class="ref">(#20 · v0.0.9)</span></li>
-        <li>배포 자동화: Docker + Kubernetes + GitHub Actions(커밋별 이미지 태그) <span class="ref">(#21)</span></li>
-        <li>서버 디스크 정리·러너 최신화 등 배포 안정화 <span class="ref">(#22, #23)</span></li>
+        <li>업무–자격증 매핑 행렬(matrix) 편집기 <span class="ver-tag">v0.0.9</span>
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/20">PR #20</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/12">이슈 #12</a>
+            <a class="live" href="https://quali-fit.bit-habit.com/?mode=manage&amp;cat=work_group&amp;svc=work_code_cert_map">▶ 매핑 화면</a>
+          </span>
+        </li>
+        <li>배포 자동화 구축: Docker + Kubernetes + GitHub Actions(커밋별 이미지 태그)
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/21">PR #21</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/14">이슈 #14</a>
+          </span>
+        </li>
+        <li>서버 디스크 정리·러너 최신화 등 배포 안정화
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/22">PR #22</a>
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/23">PR #23</a>
+          </span>
+        </li>
       </ul>
     </div>
 
     <div class="week">
-      <h3>추천 엔진 핵심 완성 <span class="range">2026.05.25 – 05.31</span></h3>
+      <h3>추천 엔진 핵심 완성 <span class="range">2026.05.25(월) – 05.31(일)</span></h3>
       <ul>
-        <li>6개 테이블 공통 CRUD 편집기(FK 드롭다운·자동 ID) <span class="ref">(#7 · v0.0.6)</span></li>
-        <li>설명 가능한 점수 계산 서비스(이유까지 보여주는 추천) <span class="ref">(#9 · v0.0.7)</span></li>
-        <li>2단 내비게이션 · 한글 UI · 추천 화면 자격증 프로필 <span class="ref">(#11 · v0.0.8)</span></li>
+        <li>6개 테이블 공통 CRUD 편집기(FK 드롭다운·자동 ID) <span class="ver-tag">v0.0.6</span>
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/7">PR #7</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/6">이슈 #6</a>
+          </span>
+        </li>
+        <li>설명 가능한 점수 계산 서비스(이유까지 보여주는 추천) <span class="ver-tag">v0.0.7</span>
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/9">PR #9</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/8">이슈 #8</a>
+            <a class="live" href="https://quali-fit.bit-habit.com/?mode=recommend">▶ 추천 화면</a>
+          </span>
+        </li>
+        <li>2단 내비게이션 · 한글 UI · 추천 화면 자격증 프로필 <span class="ver-tag">v0.0.8</span>
+          <span class="refs">
+            <a class="pr" href="https://github.com/bookseal/quali-fit/pull/11">PR #11</a>
+            <a class="iss" href="https://github.com/bookseal/quali-fit/issues/10">이슈 #10</a>
+          </span>
+        </li>
       </ul>
     </div>
   </section>
