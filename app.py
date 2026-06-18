@@ -851,6 +851,37 @@ def _render_education_summary(df: pd.DataFrame) -> None:
 
 
 # ============================================================
+# SW 대가 산정 가이드 업데이트 배너 (KIBA 피드 구독)
+# KIBA repo 가 sw.or.kr(cbIdx=276)을 매일 모니터링해 Pages 로 공개하는 피드를 읽어
+# 새 대가산정 가이드/인건비/템플릿이 올라오면 관리 화면 상단에 알린다.
+# ============================================================
+_SW_GUIDE_FEED = "https://feed-mina.github.io/kiba_2026/data/sw_guide_latest.json"
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_sw_guide_feed():
+    import json
+    import urllib.request
+    with urllib.request.urlopen(_SW_GUIDE_FEED, timeout=5) as r:
+        return json.load(r)
+
+
+def render_sw_guide_banner() -> None:
+    try:
+        data = _fetch_sw_guide_feed()
+    except Exception:
+        return  # 피드 접속 실패 시 조용히 생략
+    latest = (data or {}).get("latest")
+    if not latest:
+        return
+    is_new = bool(data.get("new_since_last_check"))
+    icon = "🔔" if is_new else "📄"
+    head = "SW 대가 산정 가이드 새 글" if is_new else "최신 SW 대가 산정 가이드"
+    msg = f"{icon} **{head}** — [{latest['title']}]({latest['url']}) · {latest['date']}"
+    (st.warning if is_new else st.info)(msg)
+
+
+# ============================================================
 # Top-level mode (sidebar — primary nav)
 # ============================================================
 MODES = list(MODE_LABELS.keys())
@@ -876,6 +907,8 @@ if mode and mode != st.query_params.get("mode"):
 # 데이터 관리
 # ============================================================
 if mode == "manage":
+    render_sw_guide_banner()
+
     # ---- Category (tier 2 — section-level) ----
     url_cat = st.query_params.get("cat", "employee_group")
     if url_cat not in CATEGORIES:
