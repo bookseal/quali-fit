@@ -574,8 +574,6 @@ COLUMN_LABELS = {
     "owner":               "책임자",
     # education
     "education_id":        "학력번호",
-    "keco_major":          "고용직업분류 대분류",
-    "keco_minor":          "고용직업분류 중분류",
     "level":               "학력수준",
     "degree":              "학위",
     "school":              "학교명",
@@ -605,7 +603,7 @@ def _label(col: str) -> str:
 CERT_WARN_DAYS = 30  # 만료 임박 기준 (일)
 
 _CERT_STATUS_LABELS = {"expired": "만료", "expiring": "만료 예정"}
-_CERT_STATUS_COLORS = {"expired": "#ffcccc", "expiring": "#fff3b0"}
+_CERT_STATUS_COLORS = {"expired": "#fee2e2", "expiring": "#fef3c7"}
 
 
 def _parse_cert_date(value: str) -> date | None:
@@ -650,14 +648,68 @@ def render_cert_expiry_section(df: pd.DataFrame, today: date) -> None:
     if df.empty or "expires_at" not in df.columns:
         return
     status = df["expires_at"].apply(lambda v: _cert_expiry_status(v, today))
+    parsed_dates = df["expires_at"].apply(_parse_cert_date)
+    days_left = parsed_dates.apply(lambda d: (d - today).days if d is not None else pd.NA)
 
-    # ---- 1. 주의 패널 ----
+    # ---- 1. 경고/주의 요약 ----
     expiring = df[status == "expiring"]
     expired = df[status == "expired"]
+    total = len(df)
+    expired_count = len(expired)
+    expiring_count = len(expiring)
+    normal_count = total - expired_count - expiring_count
+
+    st.markdown(
+        """
+        <style>
+        .cert-alert-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin: 8px 0 14px;
+        }
+        .cert-alert-card {
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            padding: 13px 14px;
+            background: #fff;
+        }
+        .cert-alert-card strong {
+            display: block;
+            font-size: 24px;
+            line-height: 1.15;
+            margin-top: 4px;
+        }
+        .cert-alert-card span {
+            color: #475569;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .cert-alert-expired { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        .cert-alert-expiring { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+        .cert-alert-normal { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+        @media (max-width: 720px) {
+            .cert-alert-grid { grid-template-columns: 1fr; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <div class="cert-alert-grid">
+          <div class="cert-alert-card cert-alert-expired"><span>빨간색 · 만료</span><strong>{expired_count}</strong></div>
+          <div class="cert-alert-card cert-alert-expiring"><span>노란색 · {CERT_WARN_DAYS}일 이내 만료 예정</span><strong>{expiring_count}</strong></div>
+          <div class="cert-alert-card cert-alert-normal"><span>정상 또는 날짜 없음</span><strong>{normal_count}</strong></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     if expiring.empty and expired.empty:
         st.success("만료되었거나 만료 예정인 자격증이 없습니다.")
     else:
-        lines = ["**⚠️ 주의**"]
+        lines = ["**경고/주의 대상**"]
         for _, r in expiring.iterrows():
             lines.append(f"- {r['name']}, {r['cert_name']} 자격증 만료 예정")
         for _, r in expired.iterrows():
@@ -667,15 +719,18 @@ def render_cert_expiry_section(df: pd.DataFrame, today: date) -> None:
     # ---- 2. 색상 표시 표 (읽기 전용) ----
     view = df.copy()
     view["status"] = status.map(_CERT_STATUS_LABELS).fillna("")
+    view["days_left"] = days_left
+    view.loc[view["status"].eq(""), "status"] = "정상"
 
     def _style_row(row):
         color = _CERT_STATUS_COLORS.get(status.loc[row.name], "")
         return [f"background-color: {color}" if color else ""] * len(row)
 
     styled = view.style.apply(_style_row, axis=1)
-    st.caption(f"🔴 만료 · 🟡 {CERT_WARN_DAYS}일 이내 만료 예정")
+    st.caption(f"빨간색 = 만료 · 노란색 = {CERT_WARN_DAYS}일 이내 만료 예정")
     column_config = {c: _label(c) for c in df.columns}
     column_config["status"] = st.column_config.TextColumn("상태")
+    column_config["days_left"] = st.column_config.NumberColumn("남은 일수")
     st.dataframe(styled, hide_index=True, width="stretch",
                  column_config=column_config)
 
@@ -949,31 +1004,35 @@ if mode == "manage":
         if choice == "education":
             st.divider()
             st.subheader("학력 집계")
-            st.caption("학력수준, 학위, 고용직업분류 대분류/중분류 기준으로 인원 수를 요약합니다.")
+            st.caption("학력수준, 학위, 학부, 전공 기준으로 인원 수를 요약합니다.")
             _render_education_summary(df)
 
         editor_key = f"{choice}_editor"
         meta = db.table_meta(choice)
         fk_opts = db.fk_options(choice)
+        real_cols = set(meta["all_cols"])
+        raw_cols = [c for c in meta["all_cols"] if c in df.columns]
+        raw_df = df[raw_cols].copy()
+        derived_cols = [c for c in df.columns if c not in real_cols]
+        derived_view_cols = [c for c in meta["pk_cols"] if c in df.columns] + derived_cols
+        derived_df = df[derived_view_cols].copy() if derived_cols else pd.DataFrame()
 
         column_config = {
             col: st.column_config.SelectboxColumn(_label(col), options=opts, required=True)
             for col, opts in fk_opts.items()
         }
-        real_cols = set(meta["all_cols"])
-        for c in df.columns:
-            if c not in real_cols:
-                column_config[c] = st.column_config.TextColumn(_label(c), disabled=True)
         for c in meta["auto_id_cols"]:
             column_config[c] = st.column_config.TextColumn(
                 _label(c), disabled=True, help="저장 시 자동 생성"
             )
-        for c in df.columns:
+        for c in raw_df.columns:
             if c not in column_config and c in real_cols:
                 column_config[c] = st.column_config.Column(_label(c))
 
+        st.markdown("#### 원본 데이터")
+        st.caption("흰색 영역은 실제 DB에 저장되는 원본 컬럼입니다. 이 표에서만 입력·수정합니다.")
         st.data_editor(
-            df,
+            raw_df,
             num_rows="dynamic",
             width="stretch",
             hide_index=True,
@@ -981,9 +1040,23 @@ if mode == "manage":
             column_config=column_config,
         )
 
+        if not derived_df.empty:
+            st.markdown("#### 파생 데이터")
+            st.caption("회색 영역은 직원명, 자격증명처럼 다른 표에서 자동으로 붙인 읽기 전용 정보입니다.")
+            derived_styled = derived_df.style.set_properties(**{
+                "background-color": "#f1f5f9",
+                "color": "#475569",
+            })
+            st.dataframe(
+                derived_styled,
+                hide_index=True,
+                width="stretch",
+                column_config={c: _label(c) for c in derived_df.columns},
+            )
+
         if st.button("저장"):
             diff = st.session_state[editor_key]
-            errors, warnings = validation.validate_diff(meta, df, diff)
+            errors, warnings = validation.validate_diff(meta, raw_df, diff)
             for msg in warnings:
                 st.warning(msg)
             if errors:
@@ -991,7 +1064,7 @@ if mode == "manage":
                     st.error(msg)
             else:
                 try:
-                    db.save_diff(choice, df, diff)
+                    db.save_diff(choice, raw_df, diff)
                     st.toast("저장됨.", icon="✅")
                     del st.session_state[editor_key]
                     st.rerun()

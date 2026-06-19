@@ -96,8 +96,6 @@ CREATE TABLE IF NOT EXISTS work_code_master (
 CREATE TABLE IF NOT EXISTS education (
     education_id TEXT PRIMARY KEY,
     employee_id TEXT NOT NULL,
-    keco_major TEXT,
-    keco_minor TEXT,
     level TEXT,
     degree TEXT,
     school TEXT,
@@ -162,18 +160,37 @@ def init_db() -> None:
     """Create all tables if they don't exist. Safe to re-run."""
     with connect() as conn:
         conn.executescript(SCHEMA)
-    _migrate_education_keco_columns()
+    _migrate_drop_education_keco_columns()
 
 
-def _migrate_education_keco_columns() -> None:
-    """Add education KECO columns to older databases if they are missing."""
+def _migrate_drop_education_keco_columns() -> None:
+    """Remove retired KECO columns from older education tables."""
     with connect() as conn:
         info = conn.execute("PRAGMA table_info(education)").fetchall()
         columns = {row["name"] for row in info}
-        if "keco_major" not in columns:
-            conn.execute("ALTER TABLE education ADD COLUMN keco_major TEXT")
-        if "keco_minor" not in columns:
-            conn.execute("ALTER TABLE education ADD COLUMN keco_minor TEXT")
+        if not {"keco_major", "keco_minor"} & columns:
+            return
+
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE education RENAME TO education_old")
+        conn.execute("""
+            CREATE TABLE education (
+                education_id TEXT PRIMARY KEY,
+                employee_id TEXT NOT NULL,
+                level TEXT,
+                degree TEXT,
+                school TEXT,
+                faculty TEXT,
+                major TEXT,
+                note TEXT,
+                FOREIGN KEY (employee_id) REFERENCES employee(employee_id) ON DELETE CASCADE
+            )
+        """)
+        keep_cols = ["education_id", "employee_id", "level", "degree", "school", "faculty", "major", "note"]
+        col_list = ", ".join(keep_cols)
+        conn.execute(f"INSERT INTO education ({col_list}) SELECT {col_list} FROM education_old")
+        conn.execute("DROP TABLE education_old")
+        conn.execute("PRAGMA foreign_keys = ON")
 
 def fk_options(table: str) -> dict[str, list]:
     """For each FK column on this table, return the valid parent-PK values.
